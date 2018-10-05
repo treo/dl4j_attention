@@ -1,4 +1,4 @@
-package tech.dubs.dl4j.contrib.attention;
+package tech.dubs.dl4j.contrib.attention.nn;
 
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
 import org.deeplearning4j.nn.gradient.DefaultGradient;
@@ -28,10 +28,10 @@ import org.nd4j.linalg.primitives.Pair;
  *
  * @author Paul Dubs
  */
-public class SelfAttentionLayerImpl extends BaseLayer<SelfAttentionLayer> {
+public class SelfAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.attention.conf.SelfAttentionLayer> {
     private IActivation softmax = new ActivationSoftmax();
 
-    public SelfAttentionLayerImpl(NeuralNetConfiguration conf) {
+    public SelfAttentionLayer(NeuralNetConfiguration conf) {
         super(conf);
     }
 

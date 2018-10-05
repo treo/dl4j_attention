@@ -11,6 +11,7 @@ import org.junit.Test;
 import org.nd4j.linalg.activations.Activation;
 import org.nd4j.linalg.learning.config.NoOp;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
+import tech.dubs.dl4j.contrib.attention.conf.SelfAttentionLayer;
 
 public class Serialization {
     @Test

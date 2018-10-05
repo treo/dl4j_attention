@@ -17,6 +17,7 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.learning.config.NoOp;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
+import tech.dubs.dl4j.contrib.attention.conf.SelfAttentionLayer;
 
 import java.util.Random;
 
@@ -71,10 +72,9 @@ public class GradientChecks {
 
 
                 MultiLayerConfiguration conf = new NeuralNetConfiguration.Builder()
-                        .activation(Activation.IDENTITY)
+                        .activation(Activation.TANH)
                         .updater(new NoOp())
                         .weightInit(WeightInit.XAVIER)
-                        .biasInit(0.0)
                         .list()
                         .layer(new LSTM.Builder().nOut(layerSize).build())
                         .layer(new SelfAttentionLayer.Builder().nOut(attentionHeads).build())

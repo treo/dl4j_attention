@@ -1,4 +1,4 @@
-package tech.dubs.dl4j.contrib.attention;
+package tech.dubs.dl4j.contrib.attention.conf;
 
 import org.deeplearning4j.nn.api.Layer;
 import org.deeplearning4j.nn.api.ParamInitializer;
@@ -37,7 +37,7 @@ public class SelfAttentionLayer extends FeedForwardLayer {
     public Layer instantiate(NeuralNetConfiguration conf, Collection<TrainingListener> iterationListeners,
                              int layerIndex, INDArray layerParamsView, boolean initializeParams) {
 
-        SelfAttentionLayerImpl layer = new SelfAttentionLayerImpl(conf);
+        tech.dubs.dl4j.contrib.attention.nn.SelfAttentionLayer layer = new tech.dubs.dl4j.contrib.attention.nn.SelfAttentionLayer(conf);
         layer.setListeners(iterationListeners);             //Set the iteration listeners, if any
         layer.setIndex(layerIndex);                         //Integer index of the layer
 

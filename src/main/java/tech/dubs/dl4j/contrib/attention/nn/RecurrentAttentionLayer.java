@@ -129,6 +129,7 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
         IActivation a = layerConf().getActivationFn();
 
         INDArray activations = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, nOut, tsLength}, 'f');
+        INDArray preOut = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, nOut, tsLength}, 'f');
         INDArray attW_PreA = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, tsLength, tsLength}, 'f');
         INDArray attW_PreS = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, tsLength, tsLength}, 'f');
         INDArray attW = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, tsLength, tsLength}, 'f');
@@ -144,6 +145,7 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
             for (int ts = 0; ts < tsLength; ts++) {
                 final INDArray x_i = subArray(input, example, ts);
                 final INDArray z_i = subArray(activations, example, ts);
+                final INDArray preOut_i = subArray(preOut, example, ts);
 
                 z_i.assign(x_i.mmul(W).addi(b));
                 if(ts > 0){
@@ -158,11 +160,12 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
                     final INDArray tsAttW = softmax.getActivation(tsAttW_PreS.dup(), true);
                     subArray(attW, example, ts).assign(tsAttW);
 
-                    final INDArray att = x.mmul(tsAttW.transpose());
+                    final INDArray att = x.mmul(tsAttW.transpose()).transposei();
                     subArray(attentions, example, ts).assign(att);
 
-                    z_i.addi(att.transpose().mmul(Wr));
+                    z_i.addi(att.mmul(Wr));
                 }
+                preOut_i.assign(z_i);
                 a.getActivation(z_i, true);
             }
         }
@@ -179,9 +182,9 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
                 final INDArray epsOut_i = subArray(epsOut, example, ts);
 
                 final INDArray eps_i = subArray(epsilon, example, ts);
-                final INDArray a_i = subArray(activations, example, ts);
+                final INDArray preOut_i = subArray(preOut, example, ts);
 
-                final INDArray dldz = a.backprop(a_i, eps_i).getFirst();
+                final INDArray dldz = a.backprop(preOut_i, eps_i).getFirst();
 
                 final INDArray dldx_i = dldz.mmul(W.transpose());
                 epsOut_i.addi(dldx_i);

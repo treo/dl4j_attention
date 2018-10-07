@@ -27,7 +27,7 @@ import java.util.Random;
 import static org.junit.Assert.assertTrue;
 
 public class GradientChecks {
-    private static final boolean PRINT_RESULTS = true;
+    private static final boolean PRINT_RESULTS = false;
     private static final boolean RETURN_ON_FIRST_FAILURE = false;
     private static final double DEFAULT_EPS = 1e-6;
     private static final double DEFAULT_MAX_REL_ERROR = 1e-3;
@@ -174,7 +174,7 @@ public class GradientChecks {
     public void testRecurrentAttentionLayer() {
         int nIn = 3;
         int nOut = 5;
-        int tsLength = 4;
+        int tsLength = 40;
         int layerSize = 8;
         int attentionHeads = 7;
 

@@ -18,6 +18,7 @@ import tech.dubs.dl4j.contrib.attention.nn.params.RecurrentQueryAttentionParamIn
  * Recurrent Attention Layer Implementation
  *
  *
+ *
  * TODO:
  *  - Optionally keep attention weights around for inspection
  *  - Handle Masking
@@ -58,46 +59,30 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
         IActivation a = layerConf().getActivationFn();
 
         INDArray activations = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, nOut, tsLength}, 'f');
-        INDArray attPrep = workspaceMgr.createUninitialized(ArrayType.FF_WORKING_MEM, new long[]{examples, 1, tsLength}, 'f');
-
 
         if(input.ordering() != 'f' || Shape.strideDescendingCAscendingF(input))
             input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input, 'f');
 
-        // Precalculate recurrency independent parts
-        // stepping through example-wise
-        final long exampleTads = input.tensorssAlongDimension(1, 2);
-        for (int tad = 0; tad < exampleTads; tad++) {
-            final INDArray in = input.tensorAlongDimension(tad, 1, 2);
-            final INDArray exAttPrep = attPrep.tensorAlongDimension(tad, 1, 2);
-            final INDArray z = activations.tensorAlongDimension(tad, 1, 2);
+        // stepping through example-wise and timestep wise
+        for (int example = 0; example < examples; example++) {
+            final INDArray x = input.tensorAlongDimension(example, 1, 2);
+            for (int ts = 0; ts < tsLength; ts++) {
+                final INDArray x_i = input.tensorAlongDimension(example, 1, 2).tensorAlongDimension(ts, 0);
+                final INDArray z_i = activations.tensorAlongDimension(example, 1, 2).tensorAlongDimension(ts, 0);
 
-            // For every timestep!
-            // Initialize z while at it
-            z.assign(W.mmul(in));
-            z.addiColumnVector(b);
+                z_i.assign(x_i.mmul(W).addi(b));
+                if(ts > 0){
+                    final INDArray a_p = activations.tensorAlongDimension(example, 1, 2).tensorAlongDimension(ts - 1, 0);
 
-            exAttPrep.assign(Wq.mmul(in));
-            exAttPrep.addi(bq);
+                    final INDArray tsAttW_PreA = Wq.transpose().mmul(x).addi(bq).addiColumnVector(a_p.mmul(Wqr));
+                    final INDArray tsAttW_PreS = a.getActivation(tsAttW_PreA.dup(), training);
+                    final INDArray tsAttW = softmax.getActivation(tsAttW_PreS.dup(), training);
 
-            // Recurrent Part
-            final long timesteps = in.tensorssAlongDimension(0);
-            for (int timestep = 0; timestep < timesteps; timestep++) {
-                final INDArray curZ = z.tensorAlongDimension(timestep, 0);
+                    final INDArray att = x.mmul(tsAttW.transpose());
 
-                if(timestep > 0){
-                    final INDArray prevA = z.tensorAlongDimension(timestep - 1, 0);
-
-                    final INDArray tsAttW = exAttPrep.dup().addiColumnVector(prevA.mmul(Wqr));
-                    a.getActivation(tsAttW, training);
-                    softmax.getActivation(tsAttW, training);
-
-                    final INDArray tsAtt = in.mmul(tsAttW.transposei()).transposei();
-
-                    curZ.addi(tsAtt.mmul(Wr));
+                    z_i.addi(att.transpose().mmul(Wr));
                 }
-
-                a.getActivation(curZ, training);
+                a.getActivation(z_i, training);
             }
         }
 
@@ -132,6 +117,7 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
         gradientsFlattened.assign(0);
 
         INDArray epsOut = workspaceMgr.createUninitialized(ArrayType.ACTIVATION_GRAD, input.shape(), 'f');
+        epsOut.assign(0);
 
         applyDropOutIfNecessary(true, workspaceMgr);
 
@@ -143,55 +129,41 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
         IActivation a = layerConf().getActivationFn();
 
         INDArray activations = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, nOut, tsLength}, 'f');
-        INDArray preActivation = workspaceMgr.createUninitialized(ArrayType.BP_WORKING_MEM, new long[]{examples, nOut, tsLength}, 'f');
-        INDArray attPerTs = workspaceMgr.create(ArrayType.BP_WORKING_MEM, new long[]{examples, nIn, tsLength}, 'f');
-
-        INDArray attPrep = workspaceMgr.createUninitialized(ArrayType.BP_WORKING_MEM, new long[]{examples, 1, tsLength}, 'f');
-
+        INDArray attW_PreA = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, tsLength, tsLength}, 'f');
+        INDArray attW_PreS = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, tsLength, tsLength}, 'f');
+        INDArray attW = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, tsLength, tsLength}, 'f');
+        INDArray attentions = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, nIn, tsLength}, 'f');
 
 
         if(input.ordering() != 'f' || Shape.strideDescendingCAscendingF(input))
             input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input, 'f');
 
-        // Precalculate recurrency independent parts
-        // stepping through example-wise
-        final long exampleTads = input.tensorssAlongDimension(1, 2);
-        for (int tad = 0; tad < exampleTads; tad++) {
-            final INDArray in = input.tensorAlongDimension(tad, 1, 2);
-            final INDArray exAttPrep = attPrep.tensorAlongDimension(tad, 1, 2);
-            final INDArray z = activations.tensorAlongDimension(tad, 1, 2);
-            final INDArray exPreActivation = preActivation.tensorAlongDimension(tad, 1, 2);
-            final INDArray exAttPerTs = attPerTs.tensorAlongDimension(tad, 1, 2);
+        // stepping through example-wise and timestep wise
+        for (int example = 0; example < examples; example++) {
+            final INDArray x = input.tensorAlongDimension(example, 1, 2);
+            for (int ts = 0; ts < tsLength; ts++) {
+                final INDArray x_i = subArray(input, example, ts);
+                final INDArray z_i = subArray(activations, example, ts);
 
-            // For every timestep!
-            // Initialize z while at it
-            z.assign(W.mmul(in));
-            z.addiColumnVector(b);
+                z_i.assign(x_i.mmul(W).addi(b));
+                if(ts > 0){
+                    final INDArray a_p = subArray(activations, example, ts - 1);
 
-            exAttPrep.assign(Wq.mmul(in));
-            exAttPrep.addi(bq);
+                    final INDArray tsAttW_PreA = Wq.transpose().mmul(x).addi(bq).addiColumnVector(a_p.mmul(Wqr));
+                    subArray(attW_PreA, example, ts).assign(tsAttW_PreA);
 
+                    final INDArray tsAttW_PreS = a.getActivation(tsAttW_PreA.dup(), true);
+                    subArray(attW_PreS, example, ts).assign(tsAttW_PreS);
 
-            final long timesteps = in.tensorssAlongDimension(0);
-            for (int timestep = 0; timestep < timesteps; timestep++) {
-                final INDArray curZ = z.tensorAlongDimension(timestep, 0);
-                final INDArray curPreActivation = exPreActivation.tensorAlongDimension(timestep, 0);
+                    final INDArray tsAttW = softmax.getActivation(tsAttW_PreS.dup(), true);
+                    subArray(attW, example, ts).assign(tsAttW);
 
-                if(timestep > 0){
-                    final INDArray prevA = z.tensorAlongDimension(timestep - 1, 0);
-                    final INDArray curAttPerTs = exAttPerTs.tensorAlongDimension(timestep, 0);
+                    final INDArray att = x.mmul(tsAttW.transpose());
+                    subArray(attentions, example, ts).assign(att);
 
-                    final INDArray tsAttW = exAttPrep.dup().addiColumnVector(prevA.mmul(Wqr));
-                    a.getActivation(tsAttW, true);
-                    softmax.getActivation(tsAttW, true);
-
-                    final INDArray tsAtt = in.mmul(tsAttW.transposei()).transposei();
-
-                    curZ.addi(tsAtt.mmul(Wr));
+                    z_i.addi(att.transpose().mmul(Wr));
                 }
-
-                curPreActivation.assign(curZ);
-                a.getActivation(curZ, true);
+                a.getActivation(z_i, true);
             }
         }
 
@@ -199,21 +171,77 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
         // Backpropagation
         // Only the very last epsilon is complete, all others are missing the recurrent component, so we have to step
         // through it one timestep at a time
+        for (int example = 0; example < examples; example++) {
+            final INDArray x = input.tensorAlongDimension(example, 1, 2);
+            final INDArray exEpsOut = epsOut.tensorAlongDimension(example, 1, 2);
+            for (int ts = (int)tsLength - 1; ts >= 0; ts--) {
+                final INDArray x_i = subArray(input, example, ts);
+                final INDArray epsOut_i = subArray(epsOut, example, ts);
+
+                final INDArray eps_i = subArray(epsilon, example, ts);
+                final INDArray a_i = subArray(activations, example, ts);
+
+                final INDArray dldz = a.backprop(a_i, eps_i).getFirst();
+
+                final INDArray dldx_i = dldz.mmul(W.transpose());
+                epsOut_i.addi(dldx_i);
+
+                final INDArray dldW = x_i.transpose().mmul(dldz);
+                Wg.addi(dldW);
+
+                bg.addi(dldz);
+
+                if(ts > 0){
+                    final INDArray att_i = subArray(attentions, example, ts);
+                    final INDArray dldWr = att_i.transpose().mmul(dldz);
+                    Wrg.addi(dldWr);
+
+                    final INDArray dldAtt = dldz.mmul(Wr.transpose());
+
+                    final INDArray attW_i = subArray(attW, example, ts);
+                    final INDArray dldx_1 = dldAtt.transpose().mmul(attW_i);
+                    exEpsOut.addi(dldx_1);
+
+                    final INDArray dldAttW = dldAtt.mmul(x);
+                    final INDArray dldPreS = softmax.backprop(subArray(attW_PreS, example, ts), dldAttW).getFirst();
+                    final INDArray dldPreA = a.backprop(subArray(attW_PreA, example, ts), dldPreS).getFirst();
+
+                    final INDArray dldbq = dldPreA.sum(1);
+                    bqg.addi(dldbq);
+
+                    final INDArray dldx_2 = Wq.mmul(dldPreA);
+                    exEpsOut.addi(dldx_2);
+
+                    final INDArray dldWq = x.mmul(dldPreA.transpose());
+                    Wqg.addi(dldWq);
+
+                    final INDArray a_p = subArray(activations, example, ts - 1);
+                    final INDArray dldWqr = a_p.transpose().mmul(dldPreA).sum(1);
+                    Wqrg.addi(dldWqr);
 
 
+                    final INDArray dlda_p = Wqr.mmul(dldPreA.sum(1));
+                    subArray(epsilon, example, ts - 1).addi(dlda_p.transposei());
+                }
+            }
+        }
 
         weightNoiseParams.clear();
 
         Gradient g = new DefaultGradient(gradientsFlattened);
         g.gradientForVariable().put(RecurrentQueryAttentionParamInitializer.WEIGHT_KEY, Wg);
-        g.gradientForVariable().put(RecurrentQueryAttentionParamInitializer.RECURRENT_WEIGHT_KEY, Wrg);
         g.gradientForVariable().put(RecurrentQueryAttentionParamInitializer.QUERY_WEIGHT_KEY, Wqg);
         g.gradientForVariable().put(RecurrentQueryAttentionParamInitializer.RECURRENT_QUERY_WEIGHT_KEY, Wqrg);
+        g.gradientForVariable().put(RecurrentQueryAttentionParamInitializer.RECURRENT_WEIGHT_KEY, Wrg);
         g.gradientForVariable().put(RecurrentQueryAttentionParamInitializer.BIAS_KEY, bg);
         g.gradientForVariable().put(RecurrentQueryAttentionParamInitializer.QUERY_BIAS_KEY, bqg);
 
         epsOut = backpropDropOutIfPresent(epsOut);
 
         return new Pair<>(g, epsOut);
+    }
+
+    private INDArray subArray(INDArray in, int example, int timestep){
+        return in.tensorAlongDimension(example, 1, 2).tensorAlongDimension(timestep, 0);
     }
 }

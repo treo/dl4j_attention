@@ -112,9 +112,9 @@ public class RecurrentQueryAttentionParamInitializer implements ParamInitializer
             Distribution dist = Distributions.createDistribution(c.getDist());
 
             m = getSubsets(paramsView, nIn, nOut, false);
-            INDArray w = WeightInitUtil.initWeights(nIn, nOut, new long[]{nOut, nIn}, c.getWeightInit(), dist, 'f', m.get(WEIGHT_KEY));
+            INDArray w = WeightInitUtil.initWeights(nIn, nOut, new long[]{nIn, nOut}, c.getWeightInit(), dist, 'f', m.get(WEIGHT_KEY));
             m.put(WEIGHT_KEY, w);
-            INDArray wq = WeightInitUtil.initWeights(nIn, 1, new long[]{1, nIn}, c.getWeightInit(), dist, 'f', m.get(QUERY_WEIGHT_KEY));
+            INDArray wq = WeightInitUtil.initWeights(nIn, 1, new long[]{nIn, 1}, c.getWeightInit(), dist, 'f', m.get(QUERY_WEIGHT_KEY));
             m.put(QUERY_WEIGHT_KEY, wq);
 
 
@@ -133,9 +133,6 @@ public class RecurrentQueryAttentionParamInitializer implements ParamInitializer
             m.put(RECURRENT_WEIGHT_KEY, rw);
             INDArray wqr = WeightInitUtil.initWeights(nOut, 1, new long[]{nOut, 1}, rwInit, rwDist, 'f', m.get(RECURRENT_QUERY_WEIGHT_KEY));
             m.put(RECURRENT_QUERY_WEIGHT_KEY, wqr);
-
-            m.put(BIAS_KEY, m.get(BIAS_KEY).reshape('f', nOut, 1));
-            m.put(QUERY_BIAS_KEY, m.get(QUERY_BIAS_KEY).reshape('f', 1, 1));
         } else {
             m = getSubsets(paramsView, nIn, nOut, true);
         }
@@ -172,11 +169,11 @@ public class RecurrentQueryAttentionParamInitializer implements ParamInitializer
         INDArray bq = in.get(point(0), interval(endB, endBq));
 
         if (reshape) {
-            w = w.reshape('f', nOut, nIn);
-            wr = wr.reshape('f', nOut, nIn);
+            w = w.reshape('f', nIn, nOut);
+            wr = wr.reshape('f', nIn, nOut);
             wq = wq.reshape('f', nIn, 1);
             wqr = wqr.reshape('f', nOut, 1);
-            b = b.reshape('f', nOut, 1);
+            b = b.reshape('f', 1, nOut);
             bq = bq.reshape('f', 1, 1);
         }
 

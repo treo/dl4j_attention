@@ -83,7 +83,7 @@ public class TimestepAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.att
             a.getActivation(attW, training);
             softmax.getActivation(attW, training);
 
-            in.mmuli(attW.transposei(), currentOutput);
+            currentOutput.assign(in.mmul(attW.transposei()));
         }
 
         return activations;
@@ -143,10 +143,6 @@ public class TimestepAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.att
             final INDArray dLda = softmax.backprop(attWPreS, dLdy).getFirst();// ∂L/∂a
             final INDArray dLdz = a.backprop(attWPreA, dLda).getFirst(); // ∂L/∂z
 
-            /*System.out.println("Epsilon:\n" + curEps.shapeInfoToString());
-            System.out.println("In:\n" + in.shapeInfoToString());
-            System.out.println("∂L/∂γ:\n" + dLdy.shapeInfoToString());
-            System.out.println("∂L/∂z:\n" + dLdz.shapeInfoToString());*/
 
             // ∂L/∂b
             bg.addi(dLdz.sum());
@@ -158,7 +154,7 @@ public class TimestepAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.att
             Wqg.addi(Nd4j.gemm(in, dLdz, false, false).sum(1));
 
             // ∂L/∂x: Part 1 - from multiplying with attention weight
-            curEps.mmuli(attW, curEpsOut);
+            curEpsOut.assign(curEps.mmul(attW));
             // ∂L/∂x: Part 2 - from being used in general attention weight calculation
             curEpsOut.addi(W.mmul(dLdz.sum(0)));
             // ∂L/∂x: Part 3 - from being used in query attention weight calculation

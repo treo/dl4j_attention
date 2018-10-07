@@ -76,7 +76,7 @@ public class SelfAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.attenti
             a.getActivation(attentionWeight, training);
             softmax.getActivation(attentionWeight, training);
 
-            in.mmuli(attentionWeight.transposei(), currentOutput);
+            currentOutput.assign(in.mmul(attentionWeight.transposei()));
         }
 
         return activations;
@@ -138,10 +138,10 @@ public class SelfAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.attenti
             bg.addi(dLdz.sum(1).transposei());
 
             // ∂L/∂W
-            Nd4j.gemm(in, dLdz, Wg, false, true, 1.0, 1.0);
+            Wg.addi(Nd4j.gemm(in, dLdz, false, true));
 
             // ∂L/∂x: Part 1 - from multiplying with attention weight
-            curEps.mmuli(attW, curEpsOut);
+            curEpsOut.assign(curEps.mmul(attW));
             // ∂L/∂x: Part 2 - from being used in attention weight calculation
             curEpsOut.addi(W.mmul(dLdz));
         }

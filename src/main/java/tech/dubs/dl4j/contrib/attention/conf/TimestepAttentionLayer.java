@@ -83,8 +83,9 @@ public class TimestepAttentionLayer extends BaseRecurrentLayer {
                 + ", layer name = \"" + getLayerName() + "\"): expect RNN input type with size > 0. Got: "
                 + inputType);
         }
+        InputType.InputTypeRecurrent itr = (InputType.InputTypeRecurrent) inputType;
 
-        return InputType.recurrent(nIn, nIn);
+        return InputType.recurrent(nIn, itr.getTimeSeriesLength());
     }
 
     @Override

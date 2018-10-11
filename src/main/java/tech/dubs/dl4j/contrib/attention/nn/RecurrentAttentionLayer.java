@@ -229,6 +229,8 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
             }
         }
 
+        System.out.println(epsilon);
+
         weightNoiseParams.clear();
 
         Gradient g = new DefaultGradient(gradientsFlattened);
@@ -245,6 +247,7 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
     }
 
     private INDArray subArray(INDArray in, int example, int timestep){
+        // maybe simplify into one TAD Call? That would require to know what the largest timestep is
         return in.tensorAlongDimension(example, 1, 2).tensorAlongDimension(timestep, 0);
     }
 }

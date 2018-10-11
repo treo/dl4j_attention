@@ -9,9 +9,9 @@ import org.deeplearning4j.nn.conf.layers.FeedForwardLayer;
 import org.deeplearning4j.nn.conf.layers.InputTypeUtil;
 import org.deeplearning4j.nn.conf.memory.LayerMemoryReport;
 import org.deeplearning4j.nn.conf.memory.MemoryReport;
-import org.deeplearning4j.nn.params.DefaultParamInitializer;
 import org.deeplearning4j.optimize.api.TrainingListener;
 import org.nd4j.linalg.api.ndarray.INDArray;
+import tech.dubs.dl4j.contrib.attention.nn.params.SelfAttentionParamInitializer;
 
 import java.util.Collection;
 import java.util.Map;
@@ -51,7 +51,30 @@ public class SelfAttentionLayer extends FeedForwardLayer {
 
     @Override
     public ParamInitializer initializer() {
-        return DefaultParamInitializer.getInstance();
+        return SelfAttentionParamInitializer.getInstance();
+    }
+
+
+    @Override
+    public double getL1ByParam(String paramName) {
+        if(initializer().isWeightParam(this, paramName)){
+            return l1;
+        }else if(initializer().isBiasParam(this, paramName)){
+            return l1Bias;
+        }
+
+        throw new IllegalArgumentException("Unknown parameter name: \"" + paramName + "\"");
+    }
+
+    @Override
+    public double getL2ByParam(String paramName) {
+        if(initializer().isWeightParam(this, paramName)){
+            return l2;
+        }else if(initializer().isBiasParam(this, paramName)){
+            return l2Bias;
+        }
+
+        throw new IllegalArgumentException("Unknown parameter name: \"" + paramName + "\"");
     }
 
     @Override
@@ -62,7 +85,7 @@ public class SelfAttentionLayer extends FeedForwardLayer {
                 + inputType);
         }
 
-        return InputType.recurrent(nIn, nOut);
+        return InputType.feedForward(nIn * nOut);
     }
 
     @Override

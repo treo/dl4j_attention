@@ -8,12 +8,12 @@ import org.deeplearning4j.nn.workspace.ArrayType;
 import org.deeplearning4j.nn.workspace.LayerWorkspaceMgr;
 import org.nd4j.base.Preconditions;
 import org.nd4j.linalg.activations.IActivation;
-import org.nd4j.linalg.activations.impl.ActivationSoftmax;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.api.ops.impl.broadcast.BroadcastCopyOp;
 import org.nd4j.linalg.api.shape.Shape;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.primitives.Pair;
+import tech.dubs.dl4j.contrib.attention.activations.ActivationMaskedSoftmax;
 import tech.dubs.dl4j.contrib.attention.nn.params.QueryAttentionParamInitializer;
 
 /**
@@ -27,7 +27,7 @@ import tech.dubs.dl4j.contrib.attention.nn.params.QueryAttentionParamInitializer
  * @author Paul Dubs
  */
 public class TimestepAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.attention.conf.TimestepAttentionLayer> {
-    private IActivation softmax = new ActivationSoftmax();
+    private ActivationMaskedSoftmax softmax = new ActivationMaskedSoftmax();
 
     public TimestepAttentionLayer(NeuralNetConfiguration conf) {
         super(conf);
@@ -75,13 +75,22 @@ public class TimestepAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.att
             final INDArray in = input.tensorAlongDimension(tad, 1, 2);
             final INDArray currentOutput = activations.tensorAlongDimension(tad, 1, 2);
 
+            INDArray mask;
+            if(maskArray != null){
+                mask = maskArray.tensorAlongDimension(tad, 1, 2);
+                mask = mask.broadcast(tsLength, tsLength).muliRowVector(mask);
+            }else{
+                mask = null;
+            }
+
             allTsAttW.addi(Nd4j.gemm(W, in, true, false));
             perTsAttW.assign(Nd4j.gemm(in, Wq, true, false));
 
             allTsAttW.broadcast(attW).addiColumnVector(perTsAttW);
 
             a.getActivation(attW, training);
-            softmax.getActivation(attW, training);
+            softmax.getActivation(attW, mask);
+
 
             currentOutput.assign(in.mmul(attW.transposei()));
         }
@@ -128,6 +137,13 @@ public class TimestepAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.att
             INDArray in = input.tensorAlongDimension(tad, 1, 2);
             INDArray curEps = epsilon.tensorAlongDimension(tad, 1, 2);
             INDArray curEpsOut = epsOut.tensorAlongDimension(tad, 1, 2);
+            INDArray mask;
+            if(maskArray != null){
+                mask = maskArray.tensorAlongDimension(tad, 1, 2);
+                mask = mask.broadcast(tsLength, tsLength).muliRowVector(mask);
+            }else{
+                mask = null;
+            }
 
             // Forward Pass with Caching of in-between results
             Nd4j.getExecutioner().exec(new BroadcastCopyOp(allTsAttW, b, allTsAttW, 0));
@@ -137,15 +153,21 @@ public class TimestepAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.att
             allTsAttW.broadcast(attW).addiColumnVector(perTsAttW);
             attWPreA.assign(attW); // z: Pre Tanh
             attWPreS.assign(a.getActivation(attW, true)); // a: Pre Softmax
-            softmax.getActivation(attW, true);
+            softmax.getActivation(attW, mask);
+
 
             final INDArray dLdy = Nd4j.gemm(curEps, in, true, false); // 	∂L/∂γ
-            final INDArray dLda = softmax.backprop(attWPreS, dLdy).getFirst();// ∂L/∂a
+            final INDArray dLda = softmax.backprop(attWPreS, mask, dLdy).getFirst();// ∂L/∂a
             final INDArray dLdz = a.backprop(attWPreA, dLda).getFirst(); // ∂L/∂z
 
 
             // ∂L/∂b
             bg.addi(dLdz.sum());
+
+            System.out.println("Wg: " + Wg.shapeInfoToString());
+            System.out.println("in: " + in.shapeInfoToString());
+            System.out.println("dldz: " + dLdz.shapeInfoToString());
+            System.out.println("Nd4j.gemm(in, dLdz, false, true): " + Nd4j.gemm(in, dLdz, false, true).shapeInfoToString());
 
             // ∂L/∂W
             Wg.addi(Nd4j.gemm(in, dLdz, false, true).sum(1));

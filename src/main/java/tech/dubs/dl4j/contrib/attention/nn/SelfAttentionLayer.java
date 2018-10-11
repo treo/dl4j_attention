@@ -1,20 +1,19 @@
 package tech.dubs.dl4j.contrib.attention.nn;
 
+import org.deeplearning4j.nn.api.MaskState;
 import org.deeplearning4j.nn.conf.NeuralNetConfiguration;
 import org.deeplearning4j.nn.gradient.DefaultGradient;
 import org.deeplearning4j.nn.gradient.Gradient;
 import org.deeplearning4j.nn.layers.BaseLayer;
-import org.deeplearning4j.nn.params.DefaultParamInitializer;
 import org.deeplearning4j.nn.workspace.ArrayType;
 import org.deeplearning4j.nn.workspace.LayerWorkspaceMgr;
 import org.nd4j.base.Preconditions;
 import org.nd4j.linalg.activations.IActivation;
 import org.nd4j.linalg.activations.impl.ActivationSoftmax;
 import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.api.ops.impl.broadcast.BroadcastCopyOp;
 import org.nd4j.linalg.api.shape.Shape;
-import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.primitives.Pair;
+import tech.dubs.dl4j.contrib.attention.nn.params.SelfAttentionParamInitializer;
 
 /**
  * Self Attention Layer Implementation
@@ -48,36 +47,24 @@ public class SelfAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.attenti
 
         applyDropOutIfNecessary(training, workspaceMgr);
 
-        INDArray W = getParamWithNoise(DefaultParamInitializer.WEIGHT_KEY, training, workspaceMgr);
-        INDArray b = getParamWithNoise(DefaultParamInitializer.BIAS_KEY, training, workspaceMgr);
+        INDArray W = getParamWithNoise(SelfAttentionParamInitializer.WEIGHT_KEY, training, workspaceMgr);
+        INDArray Q = getParamWithNoise(SelfAttentionParamInitializer.QUERY_WEIGHT_KEY, training, workspaceMgr);
+        INDArray b = getParamWithNoise(SelfAttentionParamInitializer.BIAS_KEY, training, workspaceMgr);
+        INDArray q = getParamWithNoise(SelfAttentionParamInitializer.QUERY_KEY, training, workspaceMgr);
 
         long examples = input.size(0);
-        long tsLength = input.size(2);
         long nOut = layerConf().getNOut();
         long nIn = layerConf().getNIn();
         IActivation a = layerConf().getActivationFn();
 
-        INDArray activations = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, nIn, nOut}, 'f');
+        INDArray activations = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, nIn * nOut}, 'f');
 
         if(input.ordering() != 'f' || Shape.strideDescendingCAscendingF(input))
             input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input, 'f');
 
-        INDArray attentionWeights = workspaceMgr.createUninitialized(ArrayType.FF_WORKING_MEM, new long[]{examples, nOut, tsLength}, 'f');
-        Nd4j.getExecutioner().exec(new BroadcastCopyOp(attentionWeights, b, attentionWeights, 1));
-
-        final long tads = input.tensorssAlongDimension(1, 2);
-        for (int tad = 0; tad < tads; tad++) {
-            final INDArray in = input.tensorAlongDimension(tad, 1, 2);
-            final INDArray attentionWeight = attentionWeights.tensorAlongDimension(tad, 1, 2);
-            final INDArray currentOutput = activations.tensorAlongDimension(tad, 1, 2);
-
-            attentionWeight.addi(Nd4j.gemm(W, in, true, false));
-
-            a.getActivation(attentionWeight, training);
-            softmax.getActivation(attentionWeight, training);
-
-            currentOutput.assign(in.mmul(attentionWeight.transposei()));
-        }
+        final AttentionMechanism attentionMechanism = new AttentionMechanism(Q, W, b, a, workspaceMgr, training);
+        final INDArray attention = attentionMechanism.query(q.reshape(1, nIn, 1).broadcast(examples, nIn, 1), input, input, maskArray);
+        activations.assign(attention.reshape(activations.shape()));
 
         return activations;
     }
@@ -87,73 +74,57 @@ public class SelfAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.attenti
     @Override
     public Pair<Gradient, INDArray> backpropGradient(INDArray epsilon, LayerWorkspaceMgr workspaceMgr) {
         assertInputSet(true);
-        if(epsilon.ordering() != 'f' || !Shape.hasDefaultStridesForShape(epsilon))
-            epsilon = epsilon.dup('f');
 
-        INDArray W = getParamWithNoise(DefaultParamInitializer.WEIGHT_KEY, true, workspaceMgr);
-        INDArray b = getParamWithNoise(DefaultParamInitializer.BIAS_KEY, true, workspaceMgr);
+        INDArray W = getParamWithNoise(SelfAttentionParamInitializer.WEIGHT_KEY, true, workspaceMgr);
+        INDArray Q = getParamWithNoise(SelfAttentionParamInitializer.QUERY_WEIGHT_KEY, true, workspaceMgr);
+        INDArray b = getParamWithNoise(SelfAttentionParamInitializer.BIAS_KEY, true, workspaceMgr);
+        INDArray q = getParamWithNoise(SelfAttentionParamInitializer.QUERY_KEY, true, workspaceMgr);
 
-        INDArray Wg = gradientViews.get(DefaultParamInitializer.WEIGHT_KEY);
-        INDArray bg = gradientViews.get(DefaultParamInitializer.BIAS_KEY);
-        gradientsFlattened.assign(0);
+        INDArray Wg = gradientViews.get(SelfAttentionParamInitializer.WEIGHT_KEY);
+        INDArray Qg = gradientViews.get(SelfAttentionParamInitializer.QUERY_WEIGHT_KEY);
+        INDArray bg = gradientViews.get(SelfAttentionParamInitializer.BIAS_KEY);
+        INDArray qg = gradientViews.get(SelfAttentionParamInitializer.QUERY_KEY);
 
         INDArray epsOut = workspaceMgr.createUninitialized(ArrayType.ACTIVATION_GRAD, input.shape(), 'f');
 
         applyDropOutIfNecessary(true, workspaceMgr);
 
-        long tsLength = input.size(2);
-        long nOut = layerConf().getNOut();
+        long examples = input.size(0);
+        long nIn = layerConf().getNIn();
         IActivation a = layerConf().getActivationFn();
 
         if(input.ordering() != 'f' || Shape.strideDescendingCAscendingF(input))
             input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input, 'f');
 
+        final AttentionMechanism attentionMechanism = new AttentionMechanism(Q, W, b, a, workspaceMgr, true);
+        final AttentionMechanism.AttentionGradient ag = attentionMechanism.backprop(epsilon, q.reshape(1, nIn, 1).broadcast(examples, nIn, 1), input, input, maskArray);
 
-        final long tads = input.tensorssAlongDimension(1, 2);
-        for (int tad = 0; tad < tads; tad++) {
-            final INDArray attW = workspaceMgr.createUninitialized(ArrayType.BP_WORKING_MEM, new long[]{nOut, tsLength}, 'f');
-            final INDArray attWPreA = workspaceMgr.createUninitialized(ArrayType.BP_WORKING_MEM, new long[]{nOut, tsLength}, 'f');;
-            final INDArray attWPreS =  workspaceMgr.createUninitialized(ArrayType.BP_WORKING_MEM, new long[]{nOut, tsLength}, 'f');
-
-
-            final INDArray in = input.tensorAlongDimension(tad, 1, 2);
-            final INDArray curEps = epsilon.tensorAlongDimension(tad, 1, 2);
-            final INDArray curEpsOut = epsOut.tensorAlongDimension(tad, 1, 2);
-
-
-            // Forward Pass with Caching of in-between results
-            Nd4j.getExecutioner().exec(new BroadcastCopyOp(attW, b, attW, 0));
-
-            attW.addi(Nd4j.gemm(W, in, true, false));
-            attWPreA.assign(attW); // z: Pre Tanh
-            attWPreS.assign(a.getActivation(attW, true)); // a: Pre Softmax
-            softmax.getActivation(attW, true);
-
-            final INDArray dLdy = Nd4j.gemm(curEps, in, true, false); // 	∂L/∂γ
-            final INDArray dLda = softmax.backprop(attWPreS, dLdy).getFirst();// ∂L/∂a
-            final INDArray dLdz = a.backprop(attWPreA, dLda).getFirst(); // ∂L/∂z
-            //System.out.println(dLdz);
-
-            // ∂L/∂b
-            bg.addi(dLdz.sum(1).transposei());
-
-            // ∂L/∂W
-            Wg.addi(Nd4j.gemm(in, dLdz, false, true));
-
-            // ∂L/∂x: Part 1 - from multiplying with attention weight
-            curEpsOut.assign(curEps.mmul(attW));
-            // ∂L/∂x: Part 2 - from being used in attention weight calculation
-            curEpsOut.addi(W.mmul(dLdz));
-        }
-
+        epsOut.assign(ag.getKeys()).addi(ag.getValues());
+        Wg.assign(ag.getW());
+        Qg.assign(ag.getQ());
+        bg.assign(ag.getB());
+        qg.assign(ag.getQueries().sum(0).transpose());
 
         weightNoiseParams.clear();
 
         Gradient g = new DefaultGradient(gradientsFlattened);
-        g.gradientForVariable().put(DefaultParamInitializer.WEIGHT_KEY, Wg);
-        g.gradientForVariable().put(DefaultParamInitializer.BIAS_KEY, bg);
+        g.gradientForVariable().put(SelfAttentionParamInitializer.WEIGHT_KEY, Wg);
+        g.gradientForVariable().put(SelfAttentionParamInitializer.QUERY_WEIGHT_KEY, Qg);
+        g.gradientForVariable().put(SelfAttentionParamInitializer.BIAS_KEY, bg);
+        g.gradientForVariable().put(SelfAttentionParamInitializer.QUERY_KEY, qg);
 
         epsOut = backpropDropOutIfPresent(epsOut);
         return new Pair<>(g, epsOut);
+    }
+
+    @Override
+    public Pair<INDArray, MaskState> feedForwardMaskArray(INDArray maskArray, MaskState currentMaskState,
+                                                          int minibatchSize) {
+        // no masking is possible after this point... i.e., masks have been taken into account
+        // as part of the selfattention
+        this.maskArray = maskArray;
+        this.maskState = null; //Not used in global pooling - always applied
+
+        return null;
     }
 }

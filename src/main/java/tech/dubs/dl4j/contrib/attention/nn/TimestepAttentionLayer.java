@@ -83,7 +83,7 @@ public class TimestepAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.att
         INDArray bg = gradientViews.get(QueryAttentionParamInitializer.BIAS_KEY);
         gradientsFlattened.assign(0);
 
-        INDArray epsOut = workspaceMgr.createUninitialized(ArrayType.ACTIVATION_GRAD, input.shape(), 'f');
+        INDArray epsOut = workspaceMgr.create(ArrayType.ACTIVATION_GRAD, input.shape(), 'f');
 
         applyDropOutIfNecessary(true, workspaceMgr);
 
@@ -94,12 +94,9 @@ public class TimestepAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.att
 
 
         final AttentionMechanism attentionMechanism = new AttentionMechanism(Q, W, b, a, workspaceMgr, true);
-        final AttentionMechanism.AttentionGradient ag = attentionMechanism.backprop(epsilon, input, input, input, maskArray);
-
-        epsOut.assign(ag.getKeys()).addi(ag.getValues()).addi(ag.getQueries());
-        Wg.assign(ag.getW());
-        Qg.assign(ag.getQ());
-        bg.assign(ag.getB());
+        attentionMechanism
+                .withGradientViews(Wg, Qg, bg, epsOut, epsOut, epsOut)
+                .backprop(epsilon, input, input, input, maskArray);
 
 
         weightNoiseParams.clear();

@@ -78,7 +78,7 @@ public class GradientChecks {
         final AttentionMechanism mechanism = new AttentionMechanism(Q, W, b, new ActivationIdentity(), LayerWorkspaceMgr.noWorkspaces(), true);
 
         final INDArray query = mechanism.query(queries, keys, keys, null);
-        System.out.println(mechanism.backprop(query, queries, keys, keys, null));
+        //System.out.println(mechanism.backprop(query, queries, keys, keys, null));
     }
 
     @Test
@@ -91,7 +91,7 @@ public class GradientChecks {
 
         Random r = new Random(12345);
         for (int mb : new int[]{1, 2, 3}) {
-            for (boolean inputMask : new boolean[]{true, false}) {
+            for (boolean inputMask : new boolean[]{false, true}) {
                 INDArray in = Nd4j.rand(new int[]{mb, nIn, tsLength});
                 INDArray labels = Nd4j.create(mb, nOut);
                 for (int i = 0; i < mb; i++) {

@@ -19,6 +19,14 @@ public class AttentionMechanism {
     private final LayerWorkspaceMgr mgr;
     private final boolean training;
 
+    // Required to be set for backprop
+    private INDArray Wg;
+    private INDArray Qg;
+    private INDArray bg;
+    private INDArray keyG;
+    private INDArray valueG;
+    private INDArray queryG;
+
     public AttentionMechanism(INDArray queryWeight, INDArray keyWeight, INDArray bias, IActivation activation, LayerWorkspaceMgr mgr, boolean training){
         assertWeightShapes(queryWeight, keyWeight, bias);
         Q = queryWeight;
@@ -68,7 +76,22 @@ public class AttentionMechanism {
         return result;
     }
 
-    public AttentionGradient backprop(INDArray epsilon, INDArray queries, INDArray keys, INDArray values, INDArray mask){
+    public AttentionMechanism withGradientViews(INDArray W, INDArray Q, INDArray b, INDArray keys, INDArray values, INDArray queries){
+        Wg = W;
+        Qg = Q;
+        bg = b;
+        keyG = keys;
+        valueG = values;
+        queryG = queries;
+
+        return this;
+    }
+
+    public void backprop(INDArray epsilon, INDArray queries, INDArray keys, INDArray values, INDArray mask){
+        if(Wg == null || Qg == null || bg == null || keyG == null || valueG == null || queryG == null){
+            throw new IllegalStateException("You MUST use attnMech.withGradientViews(...).backprop(...).");
+        }
+
         assertShapes(queries, keys, values);
 
         final long examples = queries.shape()[0];
@@ -84,13 +107,6 @@ public class AttentionMechanism {
             throw new IllegalStateException("Epsilon shape must match result shape. Got epsilon.shape() = "+Arrays.toString(epsilonShape)
                 + "; result shape = ["+examples+", "+attentionHeads*memoryWidth+", "+queryCount+"]");
         }
-
-        final INDArray dldValues = mgr.create(ArrayType.BP_WORKING_MEM, values.shape(), 'f');
-        final INDArray dldKeys = mgr.create(ArrayType.BP_WORKING_MEM, keys.shape(), 'f');
-        final INDArray dldQueries = mgr.create(ArrayType.BP_WORKING_MEM, queries.shape(), 'f');
-        final INDArray dldW = mgr.create(ArrayType.BP_WORKING_MEM, W.shape(), 'f');
-        final INDArray dldQ = mgr.create(ArrayType.BP_WORKING_MEM, Q.shape(), 'f');
-        final INDArray dldb = mgr.create(ArrayType.BP_WORKING_MEM, b.shape(), 'f');
 
         final INDArray dldAtt = epsilon.reshape('c', examples, attentionHeads, memoryWidth, queryCount);
 
@@ -117,23 +133,21 @@ public class AttentionMechanism {
                 final INDArray preS = this.activation.getActivation(preA.dup(), training);
                 final INDArray attW = softmax.getActivation(preS.dup(), attentionHeadMask);
 
-                subArray(dldValues, example).addi(Nd4j.gemm(curEps, attW, true, false));
+                subArray(valueG, example).addi(Nd4j.gemm(curEps, attW, true, false));
 
                 final INDArray dldAttW = Nd4j.gemm(curEps, curValues, false, false);
                 final INDArray dldPreS = softmax.backprop(preS, attentionHeadMask, dldAttW).getFirst();
                 final INDArray dldPreA = activation.backprop(preA, dldPreS).getFirst();
 
-                dldQ.addi(Nd4j.gemm(dldPreA.sum(1), query, false, false).transposei());
-                dldW.addi(Nd4j.gemm(curKeys, dldPreA, false, true));
+                Qg.addi(Nd4j.gemm(dldPreA.sum(1), query, false, false).transposei());
+                Wg.addi(Nd4j.gemm(curKeys, dldPreA, false, true));
 
-                dldb.addi(dldPreA.sum(1).transpose());
+                bg.addi(dldPreA.sum(1).transpose());
 
-                subArray(dldKeys, example).addi(Nd4j.gemm(W, dldPreA, false, false));
-                subArray(dldQueries, example, queryIdx).addi(Nd4j.gemm(Q, dldPreA, false, false).sum(1).transpose());
+                subArray(keyG, example).addi(Nd4j.gemm(W, dldPreA, false, false));
+                subArray(queryG, example, queryIdx).addi(Nd4j.gemm(Q, dldPreA, false, false).sum(1).transpose());
             }
         }
-
-        return new AttentionGradient(dldW, dldQ, dldb, dldKeys, dldValues, dldQueries);
     }
 
     private void assertWeightShapes(INDArray queryWeight, INDArray keyWeight, INDArray bias) {

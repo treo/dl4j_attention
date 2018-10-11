@@ -84,8 +84,9 @@ public class SelfAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.attenti
         INDArray Qg = gradientViews.get(SelfAttentionParamInitializer.QUERY_WEIGHT_KEY);
         INDArray bg = gradientViews.get(SelfAttentionParamInitializer.BIAS_KEY);
         INDArray qg = gradientViews.get(SelfAttentionParamInitializer.QUERY_KEY);
+        gradientsFlattened.assign(0);
 
-        INDArray epsOut = workspaceMgr.createUninitialized(ArrayType.ACTIVATION_GRAD, input.shape(), 'f');
+        INDArray epsOut = workspaceMgr.create(ArrayType.ACTIVATION_GRAD, input.shape(), 'f');
 
         applyDropOutIfNecessary(true, workspaceMgr);
 
@@ -97,13 +98,14 @@ public class SelfAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.attenti
             input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input, 'f');
 
         final AttentionMechanism attentionMechanism = new AttentionMechanism(Q, W, b, a, workspaceMgr, true);
-        final AttentionMechanism.AttentionGradient ag = attentionMechanism.backprop(epsilon, q.reshape(1, nIn, 1).broadcast(examples, nIn, 1), input, input, maskArray);
 
-        epsOut.assign(ag.getKeys()).addi(ag.getValues());
-        Wg.assign(ag.getW());
-        Qg.assign(ag.getQ());
-        bg.assign(ag.getB());
-        qg.assign(ag.getQueries().sum(0).transpose());
+        final INDArray queries = q.reshape(1, nIn, 1).broadcast(examples, nIn, 1);
+        final INDArray queryG = workspaceMgr.create(ArrayType.BP_WORKING_MEM, queries.shape(), 'f');
+
+        attentionMechanism.withGradientViews(Wg, Qg, bg, epsOut, epsOut, queryG)
+                .backprop(epsilon, queries, input, input, maskArray);
+
+        qg.assign(queryG.sum(0));
 
         weightNoiseParams.clear();
 

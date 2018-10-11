@@ -85,12 +85,12 @@ public class AttentionMechanism {
                 + "; result shape = ["+examples+", "+attentionHeads*memoryWidth+", "+queryCount+"]");
         }
 
-        final INDArray dldValues = mgr.create(ArrayType.BP_WORKING_MEM, values.shape(), 'c');
-        final INDArray dldKeys = mgr.create(ArrayType.BP_WORKING_MEM, keys.shape(), 'c');
-        final INDArray dldQueries = mgr.create(ArrayType.BP_WORKING_MEM, queries.shape(), 'c');
-        final INDArray dldW = mgr.create(ArrayType.BP_WORKING_MEM, W.shape(), 'c');
-        final INDArray dldQ = mgr.create(ArrayType.BP_WORKING_MEM, Q.shape(), 'c');
-        final INDArray dldb = mgr.create(ArrayType.BP_WORKING_MEM, b.shape(), 'c');
+        final INDArray dldValues = mgr.create(ArrayType.BP_WORKING_MEM, values.shape(), 'f');
+        final INDArray dldKeys = mgr.create(ArrayType.BP_WORKING_MEM, keys.shape(), 'f');
+        final INDArray dldQueries = mgr.create(ArrayType.BP_WORKING_MEM, queries.shape(), 'f');
+        final INDArray dldW = mgr.create(ArrayType.BP_WORKING_MEM, W.shape(), 'f');
+        final INDArray dldQ = mgr.create(ArrayType.BP_WORKING_MEM, Q.shape(), 'f');
+        final INDArray dldb = mgr.create(ArrayType.BP_WORKING_MEM, b.shape(), 'f');
 
         final INDArray dldAtt = epsilon.reshape('c', examples, attentionHeads, memoryWidth, queryCount);
 

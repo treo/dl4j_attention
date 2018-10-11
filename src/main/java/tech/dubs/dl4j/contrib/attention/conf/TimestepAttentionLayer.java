@@ -52,28 +52,24 @@ public class TimestepAttentionLayer extends BaseRecurrentLayer {
 
     @Override
     public double getL1ByParam(String paramName) {
-        switch (paramName) {
-            case QueryAttentionParamInitializer.WEIGHT_KEY:
-            case QueryAttentionParamInitializer.QUERY_WEIGHT_KEY:
-                return l1;
-            case QueryAttentionParamInitializer.BIAS_KEY:
-                return l1Bias;
-            default:
-                throw new IllegalArgumentException("Unknown parameter name: \"" + paramName + "\"");
+        if(initializer().isWeightParam(this, paramName)){
+            return l1;
+        }else if(initializer().isBiasParam(this, paramName)){
+            return l1Bias;
         }
+
+        throw new IllegalArgumentException("Unknown parameter name: \"" + paramName + "\"");
     }
 
     @Override
     public double getL2ByParam(String paramName) {
-        switch (paramName) {
-            case QueryAttentionParamInitializer.WEIGHT_KEY:
-            case QueryAttentionParamInitializer.QUERY_WEIGHT_KEY:
-                return l2;
-            case QueryAttentionParamInitializer.BIAS_KEY:
-                return l2Bias;
-            default:
-                throw new IllegalArgumentException("Unknown parameter name: \"" + paramName + "\"");
+        if(initializer().isWeightParam(this, paramName)){
+            return l2;
+        }else if(initializer().isBiasParam(this, paramName)){
+            return l2Bias;
         }
+
+        throw new IllegalArgumentException("Unknown parameter name: \"" + paramName + "\"");
     }
 
     @Override
@@ -85,7 +81,7 @@ public class TimestepAttentionLayer extends BaseRecurrentLayer {
         }
         InputType.InputTypeRecurrent itr = (InputType.InputTypeRecurrent) inputType;
 
-        return InputType.recurrent(nIn, itr.getTimeSeriesLength());
+        return InputType.recurrent(nIn * nOut, itr.getTimeSeriesLength());
     }
 
     @Override

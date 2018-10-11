@@ -90,7 +90,7 @@ public class GradientChecks {
         int attentionHeads = 2;
 
         Random r = new Random(12345);
-        for (int mb : new int[]{2, 3,1}) {
+        for (int mb : new int[]{1, 2, 3}) {
             for (boolean inputMask : new boolean[]{true, false}) {
                 INDArray in = Nd4j.rand(new int[]{mb, nIn, tsLength});
                 INDArray labels = Nd4j.create(mb, nOut);
@@ -147,12 +147,12 @@ public class GradientChecks {
         int nOut = 5;
         int tsLength = 4;
         int layerSize = 8;
-        int attentionHeads = 7;
+        int attentionHeads = 3;
 
 
         Random r = new Random(12345);
-        for (int mb : new int[]{1, 3, 7}) {
-            for (boolean inputMask : new boolean[]{false}) {
+        for (int mb : new int[]{1, 2, 3}) {
+            for (boolean inputMask : new boolean[]{false, true}) {
                 INDArray in = Nd4j.rand(new int[]{mb, nIn, tsLength});
                 INDArray labels = Nd4j.create(mb, nOut);
                 for (int i = 0; i < mb; i++) {
@@ -184,7 +184,7 @@ public class GradientChecks {
                         .weightInit(WeightInit.XAVIER)
                         .list()
                         .layer(new LSTM.Builder().nOut(layerSize).build())
-                        .layer(new TimestepAttentionLayer.Builder().nOut(1).build())
+                        .layer(new TimestepAttentionLayer.Builder().nOut(attentionHeads).build())
                         .layer(new GlobalPoolingLayer.Builder().poolingType(PoolingType.MAX).build())
                         .layer(new OutputLayer.Builder().nOut(nOut).activation(Activation.SOFTMAX)
                                 .lossFunction(LossFunctions.LossFunction.MCXENT).build())

@@ -41,7 +41,7 @@ public class QueryAttentionParamInitializer implements ParamInitializer {
     }
 
     public static final String WEIGHT_KEY = DefaultParamInitializer.WEIGHT_KEY;
-    public static final String QUERY_WEIGHT_KEY = "WQ";
+    public static final String QUERY_WEIGHT_KEY = "Q";
     public static final String BIAS_KEY = DefaultParamInitializer.BIAS_KEY;
 
     private static final List<String> PARAM_KEYS = Collections.unmodifiableList(Arrays.asList(WEIGHT_KEY, QUERY_WEIGHT_KEY, BIAS_KEY));
@@ -83,12 +83,12 @@ public class QueryAttentionParamInitializer implements ParamInitializer {
 
     @Override
     public boolean isWeightParam(Layer layer, String key) {
-        return WEIGHT_KEY.equals(key) || QUERY_WEIGHT_KEY.equals(key);
+        return WEIGHT_KEYS.contains(key);
     }
 
     @Override
     public boolean isBiasParam(Layer layer, String key) {
-        return BIAS_KEY.equals(key);
+        return BIAS_KEYS.contains(key);
     }
 
     @Override

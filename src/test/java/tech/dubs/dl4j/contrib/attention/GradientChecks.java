@@ -11,10 +11,8 @@ import org.deeplearning4j.nn.conf.layers.PoolingType;
 import org.deeplearning4j.nn.conf.layers.recurrent.LastTimeStep;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.nn.weights.WeightInit;
-import org.deeplearning4j.nn.workspace.LayerWorkspaceMgr;
 import org.junit.Test;
 import org.nd4j.linalg.activations.Activation;
-import org.nd4j.linalg.activations.impl.ActivationIdentity;
 import org.nd4j.linalg.api.buffer.DataBuffer;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
@@ -23,7 +21,6 @@ import org.nd4j.linalg.lossfunctions.LossFunctions;
 import tech.dubs.dl4j.contrib.attention.conf.RecurrentAttentionLayer;
 import tech.dubs.dl4j.contrib.attention.conf.SelfAttentionLayer;
 import tech.dubs.dl4j.contrib.attention.conf.TimestepAttentionLayer;
-import tech.dubs.dl4j.contrib.attention.nn.AttentionMechanism;
 
 import java.util.Random;
 
@@ -65,20 +62,21 @@ public class GradientChecks {
 
     @Test
     public void repl(){
-        final int attentionHeads = 2;
-        final INDArray keys = Nd4j.linspace(1, 24, 24).reshape(2, 3, 4);
-        final INDArray queries = Nd4j.linspace(1, 18, 18).reshape(2, 3, 3);
+        final int examples = 2;
+        final int width = 3;
+        final int timesteps = 4;
+        final int nOut = 5;
 
-        final INDArray W = Nd4j.ones(3, attentionHeads);
-        final INDArray Q = Nd4j.linspace(1, 3*attentionHeads, 3*attentionHeads).reshape(3, attentionHeads);
-        final INDArray b = Nd4j.ones(1, attentionHeads);
+        final INDArray output = Nd4j.zeros(examples, nOut, timesteps);
+        final INDArray input = Nd4j.linspace(1, examples * width * timesteps, examples * width * timesteps).reshape(examples, width, timesteps);
 
-        System.out.println(queries);
-        System.out.println(Q);
-        final AttentionMechanism mechanism = new AttentionMechanism(Q, W, b, new ActivationIdentity(), LayerWorkspaceMgr.noWorkspaces(), true);
+        final INDArray W = Nd4j.ones(width, nOut);
+        final INDArray b = Nd4j.ones(1, nOut);
 
-        final INDArray query = mechanism.query(queries, keys, keys, null);
-        //System.out.println(mechanism.backprop(query, queries, keys, keys, null));
+        output.assign(input.permute(0,2,1).reshape(examples * timesteps, width).mmul(W).addiRowVector(b).reshape(examples, timesteps, nOut).permute(0,2,1));
+        System.out.println(output);
+
+        System.out.println(output.tensorAlongDimension(0, 0, 1));
     }
 
     @Test
@@ -211,8 +209,8 @@ public class GradientChecks {
 
 
         Random r = new Random(12345);
-        for (int mb : new int[]{3, 2, 7}) {
-            for (boolean inputMask : new boolean[]{false}) {
+        for (int mb : new int[]{3, 2, 1}) {
+            for (boolean inputMask : new boolean[]{true, false}) {
                 INDArray in = Nd4j.rand(new int[]{mb, nIn, tsLength});
                 INDArray labels = Nd4j.create(mb, nOut);
                 for (int i = 0; i < mb; i++) {

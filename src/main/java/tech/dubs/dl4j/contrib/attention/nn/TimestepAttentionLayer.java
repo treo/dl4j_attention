@@ -48,16 +48,17 @@ public class TimestepAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.att
         INDArray Q = getParamWithNoise(QueryAttentionParamInitializer.QUERY_WEIGHT_KEY, training, workspaceMgr);
         INDArray b = getParamWithNoise(QueryAttentionParamInitializer.BIAS_KEY, training, workspaceMgr);
 
-        long examples = input.size(0);
-        long tsLength = input.size(2);
+
         long nIn = layerConf().getNIn();
         long nOut = layerConf().getNOut();
         IActivation a = layerConf().getActivationFn();
+        long examples = input.shape()[0] == nIn ? input.shape()[2] : input.shape()[0];
+        long tsLength = input.shape()[0] == nIn ? input.shape()[1] : input.shape()[2];
 
         INDArray activations = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, nIn*nOut, tsLength}, 'f');
 
-        if(input.ordering() != 'f' || Shape.strideDescendingCAscendingF(input))
-            input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input, 'f');
+        if(input.shape()[0] != nIn)
+            input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input.permute(1, 2, 0), 'f');
 
         final AttentionMechanism attentionMechanism = new AttentionMechanism(Q, W, b, a, workspaceMgr, training);
         final INDArray attention = attentionMechanism.query(input, input, input, maskArray);
@@ -83,21 +84,22 @@ public class TimestepAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.att
         INDArray bg = gradientViews.get(QueryAttentionParamInitializer.BIAS_KEY);
         gradientsFlattened.assign(0);
 
-        INDArray epsOut = workspaceMgr.create(ArrayType.ACTIVATION_GRAD, input.shape(), 'f');
-
         applyDropOutIfNecessary(true, workspaceMgr);
 
         IActivation a = layerConf().getActivationFn();
 
-        if(input.ordering() != 'f' || Shape.strideDescendingCAscendingF(input))
-            input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input, 'f');
+        long nIn = layerConf().getNIn();
+        if(input.shape()[0] != nIn)
+            input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input.permute(1, 2, 0), 'f');
 
+        INDArray epsOut = workspaceMgr.create(ArrayType.ACTIVATION_GRAD, input.shape(), 'f');
 
         final AttentionMechanism attentionMechanism = new AttentionMechanism(Q, W, b, a, workspaceMgr, true);
         attentionMechanism
                 .withGradientViews(Wg, Qg, bg, epsOut, epsOut, epsOut)
                 .backprop(epsilon, input, input, input, maskArray);
 
+        epsOut = workspaceMgr.dup(ArrayType.ACTIVATION_GRAD, epsOut.permute(2, 0, 1), 'f');
 
         weightNoiseParams.clear();
 

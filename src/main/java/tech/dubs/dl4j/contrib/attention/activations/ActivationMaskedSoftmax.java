@@ -32,22 +32,20 @@ public class ActivationMaskedSoftmax {
 
     public INDArray getActivation(INDArray in, INDArray mask) {
         assertShape(in, mask, null);
-        final long[] shape = in.shape();
-        final long[] preBroadcastShape = Arrays.copyOf(shape, shape.length);
-        preBroadcastShape[preBroadcastShape.length - 1] = 1;
 
-        final INDArray max = in.max(-1).reshape(preBroadcastShape).broadcast(shape);
-        final INDArray exp = Transforms.exp(in.sub(max), false);
+        final INDArray shift = in.max(-1);
+        final INDArray exp = Transforms.exp(in.subiColumnVector(shift), false);
+
         final INDArray masked;
         if (mask != null) {
-            masked = exp.mul(mask);
+            masked = exp.muli(mask);
         } else {
             masked = exp;
         }
 
-        final INDArray sum = masked.sum(-1).reshape(preBroadcastShape).broadcast(shape);
-        masked.div(sum, in);
-        return in;
+        final INDArray sum = masked.sum(-1);
+        masked.diviColumnVector(sum);
+        return masked;
     }
 
     public Pair<INDArray, INDArray> backprop(INDArray in, INDArray mask, INDArray epsilon) {

@@ -14,6 +14,12 @@ import tech.dubs.dl4j.contrib.attention.activations.ActivationMaskedSoftmax;
 
 import java.util.Arrays;
 
+import static org.nd4j.linalg.indexing.NDArrayIndex.all;
+import static org.nd4j.linalg.indexing.NDArrayIndex.point;
+
+/*
+  Attention: Shapes for keys, values and queries should be in [features, timesteps, examples] order!
+ */
 public class AttentionMechanism {
     private final INDArray W;
     private final INDArray Q;
@@ -45,10 +51,10 @@ public class AttentionMechanism {
     public INDArray query(INDArray queries, INDArray keys, INDArray values, INDArray mask){
         assertShapes(queries, keys, values);
 
-        final long examples = queries.shape()[0];
-        final long queryCount = queries.shape()[2];
+        final long examples = queries.shape()[2];
+        final long queryCount = queries.shape()[1];
         final long attentionHeads = W.shape()[1];
-        final long memoryWidth = values.shape()[1];
+        final long memoryWidth = W.shape()[0];
 
         final INDArray result = mgr.createUninitialized(ArrayType.FF_WORKING_MEM, new long[]{examples, memoryWidth * attentionHeads, queryCount}, 'f');
 
@@ -58,9 +64,9 @@ public class AttentionMechanism {
                 .build();
 
         for (long example = 0; example < examples; example++) {
-            try(MemoryWorkspace ws = Nd4j.getWorkspaceManager().getAndActivateWorkspace(initialConfig,"ATTENTION")){
-                final INDArray curValues = subArray(values, example);
-                final INDArray curKeys = subArray(keys, example);
+            try(MemoryWorkspace ws = Nd4j.getWorkspaceManager().getAndActivateWorkspace(initialConfig,"ATTENTION_FF")){
+                final INDArray curValues = values.get(all(), all(), point(example));
+                final INDArray curKeys = keys.get(all(), all(), point(example));
 
                 final INDArray preResult = Nd4j.gemm(W, curKeys, true, false);
                 preResult.addiColumnVector(b.transpose());
@@ -69,11 +75,11 @@ public class AttentionMechanism {
                 final INDArray attentionHeadMask = attentionHeadMask(curMask, preResult.shape());
 
                 for (long queryIdx = 0; queryIdx < queryCount; queryIdx++) {
-                    try(MemoryWorkspace innerWs = Nd4j.getWorkspaceManager().getAndActivateWorkspace(initialConfig,"ATTENTION_QUERY")) {
-                        final INDArray query = subArray(queries, example, queryIdx);
+                    try(MemoryWorkspace innerWs = Nd4j.getWorkspaceManager().getAndActivateWorkspace(initialConfig,"ATTENTION_QUERY_FF")) {
+                        final INDArray query = queries.get(all(), point(queryIdx), point(example));
                         final INDArray curResult = subArray(result, example, queryIdx);
 
-                        final INDArray queryResult = Nd4j.gemm(Q, query, true, true);
+                        final INDArray queryResult = Nd4j.gemm(Q, query, true, false);
 
                         final INDArray preA = preResult.addColumnVector(queryResult);
                         final INDArray preS = this.activation.getActivation(preA, training);
@@ -85,7 +91,6 @@ public class AttentionMechanism {
                 }
             }
         }
-
         return result;
     }
 
@@ -107,10 +112,10 @@ public class AttentionMechanism {
 
         assertShapes(queries, keys, values);
 
-        final long examples = queries.shape()[0];
-        final long queryCount = queries.shape()[2];
+        final long examples = queries.shape()[2];
+        final long queryCount = queries.shape()[1];
         final long attentionHeads = W.shape()[1];
-        final long memoryWidth = values.shape()[1];
+        final long memoryWidth = W.shape()[0];
 
         if(epsilon.ordering() != 'c' || !Shape.hasDefaultStridesForShape(epsilon))
             epsilon = epsilon.dup('c');
@@ -130,10 +135,9 @@ public class AttentionMechanism {
 
 
         for (long example = 0; example < examples; example++) {
-            try (MemoryWorkspace ws = Nd4j.getWorkspaceManager().getAndActivateWorkspace(initialConfig, "ATTENTION")) {
-
-                final INDArray curValues = subArray(values, example);
-                final INDArray curKeys = subArray(keys, example);
+            try (MemoryWorkspace ws = Nd4j.getWorkspaceManager().getAndActivateWorkspace(initialConfig, "ATTENTION_BP")) {
+                final INDArray curValues = values.get(all(), all(), point(example));
+                final INDArray curKeys = keys.get(all(), all(), point(example));
 
                 final INDArray exEps = dldAtt.tensorAlongDimension((int) example, 1, 2, 3);
 
@@ -144,29 +148,29 @@ public class AttentionMechanism {
                 final INDArray attentionHeadMask = attentionHeadMask(curMask, preResult.shape());
 
                 for (long queryIdx = 0; queryIdx < queryCount; queryIdx++) {
-                    try(MemoryWorkspace innerWs = Nd4j.getWorkspaceManager().getAndActivateWorkspace(initialConfig,"ATTENTION")) {
+                    try(MemoryWorkspace innerWs = Nd4j.getWorkspaceManager().getAndActivateWorkspace(initialConfig,"ATTENTION_QUERY_BP")) {
                         final INDArray curEps = exEps.tensorAlongDimension((int) queryIdx, 0, 1);
-                        final INDArray query = subArray(queries, example, queryIdx);
+                        final INDArray query = queries.get(all(), point(queryIdx), point(example));
 
-                        final INDArray queryResult = Nd4j.gemm(Q, query, true, true);
+                        final INDArray queryResult = Nd4j.gemm(Q, query, true, false);
 
                         final INDArray preA = preResult.addColumnVector(queryResult);
                         final INDArray preS = this.activation.getActivation(preA.dup(), training);
                         final INDArray attW = softmax.getActivation(preS.dup(), attentionHeadMask);
 
-                        subArray(valueG, example).addi(Nd4j.gemm(curEps, attW, true, false));
+                        valueG.get(all(), all(), point(example)).addi(Nd4j.gemm(curEps, attW, true, false));
 
                         final INDArray dldAttW = Nd4j.gemm(curEps, curValues, false, false);
                         final INDArray dldPreS = softmax.backprop(preS, attentionHeadMask, dldAttW).getFirst();
                         final INDArray dldPreA = activation.backprop(preA, dldPreS).getFirst();
 
-                        Qg.addi(Nd4j.gemm(dldPreA.sum(1), query, false, false).transposei());
+                        Qg.addi(Nd4j.gemm(query, dldPreA.sum(1), false, true));
                         Wg.addi(Nd4j.gemm(curKeys, dldPreA, false, true));
 
                         bg.addi(dldPreA.sum(1).transpose());
 
-                        subArray(keyG, example).addi(Nd4j.gemm(W, dldPreA, false, false));
-                        subArray(queryG, example, queryIdx).addi(Nd4j.gemm(Q, dldPreA, false, false).sum(1).transpose());
+                        keyG.get(all(), all(), point(example)).addi(Nd4j.gemm(W, dldPreA, false, false));
+                        queryG.get(all(), point(queryIdx), point(example)).addi(Nd4j.gemm(Q, dldPreA, false, false).sum(1));
                     }
                 }
             }
@@ -190,7 +194,7 @@ public class AttentionMechanism {
         final long kIn = W.shape()[0];
         final long qIn = Q.shape()[0];
 
-        if(query.shape()[1] != qIn || keys.shape()[1] != kIn){
+        if(query.shape()[0] != qIn || keys.shape()[0] != kIn){
             throw new IllegalStateException("Shapes of query and keys must be compatible to weights, but got: queryWeight.shape() = "+Arrays.toString(Q.shape())
                     +", queries.shape() = "+Arrays.toString(query.shape())
                     +"; keyWeight.shape() = " + Arrays.toString(W.shape())
@@ -198,12 +202,12 @@ public class AttentionMechanism {
             );
         }
 
-        if(keys.shape()[2] != values.shape()[2]){
+        if(keys.shape()[1] != values.shape()[1]){
             throw new IllegalStateException("Keys must be the same length as values! But got keys.shape() = "+Arrays.toString(keys.shape())
                     +", values.shape = "+Arrays.toString(values.shape()));
         }
 
-        if(keys.shape()[0] != values.shape()[0] || query.shape()[0] != keys.shape()[0]){
+        if(keys.shape()[2] != values.shape()[2] || query.shape()[2] != keys.shape()[2]){
             throw new IllegalStateException("Queries, Keys and Values must have same mini-batch size! But got keys.shape() = "+Arrays.toString(keys.shape())
                     +", values.shape = "+Arrays.toString(values.shape())
                     +", queries.shape = "+Arrays.toString(query.shape())

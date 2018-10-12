@@ -11,7 +11,6 @@ import org.nd4j.base.Preconditions;
 import org.nd4j.linalg.activations.IActivation;
 import org.nd4j.linalg.activations.impl.ActivationSoftmax;
 import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.api.shape.Shape;
 import org.nd4j.linalg.primitives.Pair;
 import tech.dubs.dl4j.contrib.attention.nn.params.SelfAttentionParamInitializer;
 
@@ -52,18 +51,20 @@ public class SelfAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.attenti
         INDArray b = getParamWithNoise(SelfAttentionParamInitializer.BIAS_KEY, training, workspaceMgr);
         INDArray q = getParamWithNoise(SelfAttentionParamInitializer.QUERY_KEY, training, workspaceMgr);
 
-        long examples = input.size(0);
         long nOut = layerConf().getNOut();
         long nIn = layerConf().getNIn();
+        long examples = input.shape()[0] == nIn ? input.shape()[2] : input.shape()[0];
         IActivation a = layerConf().getActivationFn();
 
         INDArray activations = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, nIn * nOut}, 'f');
 
-        if(input.ordering() != 'f' || Shape.strideDescendingCAscendingF(input))
-            input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input, 'f');
+        if(input.shape()[0] != nIn)
+            input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input.permute(1, 2, 0), 'f');
+
+        final INDArray queries = q.reshape(nIn, 1, 1).broadcast(nIn, 1, examples);
 
         final AttentionMechanism attentionMechanism = new AttentionMechanism(Q, W, b, a, workspaceMgr, training);
-        final INDArray attention = attentionMechanism.query(q.reshape(1, nIn, 1).broadcast(examples, nIn, 1), input, input, maskArray);
+        final INDArray attention = attentionMechanism.query(queries, input, input, maskArray);
         activations.assign(attention.reshape(activations.shape()));
 
         return activations;
@@ -86,26 +87,28 @@ public class SelfAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.attenti
         INDArray qg = gradientViews.get(SelfAttentionParamInitializer.QUERY_KEY);
         gradientsFlattened.assign(0);
 
-        INDArray epsOut = workspaceMgr.create(ArrayType.ACTIVATION_GRAD, input.shape(), 'f');
-
         applyDropOutIfNecessary(true, workspaceMgr);
 
-        long examples = input.size(0);
         long nIn = layerConf().getNIn();
+        long examples = input.shape()[0] == nIn ? input.shape()[2] : input.shape()[0];
         IActivation a = layerConf().getActivationFn();
 
-        if(input.ordering() != 'f' || Shape.strideDescendingCAscendingF(input))
-            input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input, 'f');
+        if(input.shape()[0] != nIn)
+            input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input.permute(1, 2, 0), 'f');
+
+        INDArray epsOut = workspaceMgr.create(ArrayType.ACTIVATION_GRAD, input.shape(), 'f');
 
         final AttentionMechanism attentionMechanism = new AttentionMechanism(Q, W, b, a, workspaceMgr, true);
 
-        final INDArray queries = q.reshape(1, nIn, 1).broadcast(examples, nIn, 1);
+        final INDArray queries = q.reshape(nIn, 1, 1).broadcast(nIn, 1, examples);
         final INDArray queryG = workspaceMgr.create(ArrayType.BP_WORKING_MEM, queries.shape(), 'f');
 
         attentionMechanism.withGradientViews(Wg, Qg, bg, epsOut, epsOut, queryG)
                 .backprop(epsilon, queries, input, input, maskArray);
 
-        qg.assign(queryG.sum(0));
+        qg.assign(queryG.sum(2).transposei());
+
+        epsOut = workspaceMgr.dup(ArrayType.ACTIVATION_GRAD, epsOut.permute(2, 0, 1), 'f');
 
         weightNoiseParams.clear();
 

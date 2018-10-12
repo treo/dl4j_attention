@@ -15,6 +15,9 @@ import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.primitives.Pair;
 import tech.dubs.dl4j.contrib.attention.nn.params.RecurrentQueryAttentionParamInitializer;
 
+import static org.nd4j.linalg.indexing.NDArrayIndex.all;
+import static org.nd4j.linalg.indexing.NDArrayIndex.point;
+
 /**
  * Recurrent Attention Layer Implementation
  *
@@ -61,24 +64,26 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
 
         INDArray activations = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, nOut, tsLength}, 'f');
 
-        if(input.ordering() != 'f' || Shape.strideDescendingCAscendingF(input))
-            input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input, 'f');
-
+        if(input.shape()[0] != nIn)
+            input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input.permute(1, 2, 0), 'f');
 
         final AttentionMechanism attentionMechanism = new AttentionMechanism(Wqr, Wq, bq, a, workspaceMgr, training);
 
+
         // pre-compute non-recurrent part
-        activations.assign(input
-                .permute(0,2,1).reshape(examples * tsLength, nIn)
-                .mmul(W).addiRowVector(b)
-                .reshape(examples, tsLength, nOut).permute(0,2,1));
+        activations.assign(
+                Nd4j.gemm(W, input.reshape('f', nIn, tsLength * examples), true, false)
+                        .addiColumnVector(b.transpose())
+                        .reshape('f', nOut, tsLength, examples).permute(2, 0, 1)
+        );
 
 
         for (long timestep = 0; timestep < tsLength; timestep++) {
             final INDArray curOut = timestepArray(activations, timestep);
             if(timestep > 0){
                 final INDArray prevActivation = timestepArray(activations, timestep - 1);
-                final INDArray attention = attentionMechanism.query(Nd4j.expandDims(prevActivation, 2), input, input, maskArray);
+                final INDArray queries = Nd4j.expandDims(prevActivation, 2).permute(1,2,0);
+                final INDArray attention = attentionMechanism.query(queries, input, input, maskArray);
                 curOut.addi(Nd4j.squeeze(attention, 2).mmul(Wr));
             }
 
@@ -116,36 +121,35 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
         INDArray bqg = gradientViews.get(RecurrentQueryAttentionParamInitializer.QUERY_BIAS_KEY);
         gradientsFlattened.assign(0);
 
-        INDArray epsOut = workspaceMgr.createUninitialized(ArrayType.ACTIVATION_GRAD, input.shape(), 'f');
-        epsOut.assign(0);
-
         applyDropOutIfNecessary(true, workspaceMgr);
 
 
-        long examples = input.size(0);
-        long tsLength = input.size(2);
         long nIn = layerConf().getNIn();
         long nOut = layerConf().getNOut();
+        long examples = input.shape()[0] == nIn ? input.shape()[2] : input.shape()[0];
+        long tsLength = input.shape()[0] == nIn ? input.shape()[1] : input.shape()[2];
         IActivation a = layerConf().getActivationFn();
 
         INDArray activations = workspaceMgr.createUninitialized(ArrayType.ACTIVATIONS, new long[]{examples, nOut, tsLength}, 'f');
         INDArray preOut = workspaceMgr.createUninitialized(ArrayType.BP_WORKING_MEM, new long[]{examples, nOut, tsLength}, 'f');
         INDArray attentions = workspaceMgr.createUninitialized(ArrayType.BP_WORKING_MEM, new long[]{examples, nIn, tsLength}, 'f');
-        INDArray queryG = workspaceMgr.create(ArrayType.BP_WORKING_MEM, new long[]{examples, nOut, 1}, 'f');
+        INDArray queryG = workspaceMgr.create(ArrayType.BP_WORKING_MEM, new long[]{nOut, 1, examples}, 'f');
 
-        if(input.ordering() != 'f' || Shape.strideDescendingCAscendingF(input)) {
-            input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input, 'f');
-        }
+        if(input.shape()[0] != nIn)
+            input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input.permute(1, 2, 0), 'f');
+
+        INDArray epsOut = workspaceMgr.create(ArrayType.ACTIVATION_GRAD, input.shape(), 'f');
+        epsOut.assign(0);
 
 
         final AttentionMechanism attentionMechanism = new AttentionMechanism(Wqr, Wq, bq, a, workspaceMgr, true);
 
         // pre-compute non-recurrent part
-        activations.assign(input
-                .permute(0,2,1).reshape(examples * tsLength, nIn)
-                .mmul(W).addiRowVector(b)
-                .reshape(examples, tsLength, nOut).permute(0,2,1));
-
+        activations.assign(
+                Nd4j.gemm(W, input.reshape('f', nIn, tsLength * examples), true, false)
+                        .addiColumnVector(b.transpose())
+                        .reshape('f', nOut, tsLength, examples).permute(2, 0, 1)
+        );
 
 
         for (long timestep = 0; timestep < tsLength; timestep++) {
@@ -153,7 +157,7 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
 
             if(timestep > 0){
                 final INDArray prevActivation = timestepArray(activations, timestep - 1);
-                final INDArray query = Nd4j.expandDims(prevActivation, 2);
+                final INDArray query = Nd4j.expandDims(prevActivation, 2).permute(1, 2, 0);
                 final INDArray attention = Nd4j.squeeze(attentionMechanism.query(query, input, input, maskArray), 2);
                 timestepArray(attentions, timestep).assign(attention);
 
@@ -167,12 +171,12 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
         for (long timestep = tsLength - 1; timestep >= 0; timestep--) {
             final INDArray curEps = timestepArray(epsilon, timestep);
             final INDArray curPreOut = timestepArray(preOut, timestep);
-            final INDArray curIn = timestepArray(input, timestep);
+            final INDArray curIn = input.get(all(), point(timestep), all());
 
             final INDArray dldz = a.backprop(curPreOut, curEps).getFirst();
-            Wg.addi(Nd4j.gemm(curIn, dldz, true, false));
+            Wg.addi(Nd4j.gemm(curIn, dldz, false, false));
             bg.addi(dldz.sum(0));
-            timestepArray(epsOut, timestep).addi(Nd4j.gemm(dldz, W, false, true));
+            epsOut.tensorAlongDimension((int)timestep, 0, 2).addi(Nd4j.gemm(dldz, W, false, true).transposei());
 
             if(timestep > 0){
                 final INDArray curAttn = timestepArray(attentions, timestep);
@@ -181,7 +185,7 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
 
                 final INDArray prevEps = timestepArray(epsilon, timestep - 1);
                 final INDArray prevActivation = timestepArray(activations, timestep - 1);
-                final INDArray query = Nd4j.expandDims(prevActivation, 2);
+                final INDArray query = Nd4j.expandDims(prevActivation, 2).permute(1,2,0);
                 queryG.assign(0);
 
                 final INDArray dldAtt = Nd4j.gemm(dldz, Wr, false, true);
@@ -189,7 +193,7 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
                         .withGradientViews(Wqg, Wqrg, bqg, epsOut, epsOut, queryG)
                         .backprop(dldAtt, query, input, input, maskArray);
 
-                prevEps.addi(Nd4j.squeeze(queryG, 2));
+                prevEps.addi(Nd4j.squeeze(queryG, 1).transpose());
             }
         }
 
@@ -203,6 +207,7 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
         g.gradientForVariable().put(RecurrentQueryAttentionParamInitializer.BIAS_KEY, bg);
         g.gradientForVariable().put(RecurrentQueryAttentionParamInitializer.QUERY_BIAS_KEY, bqg);
 
+        epsOut = workspaceMgr.dup(ArrayType.ACTIVATION_GRAD, epsOut.permute(2, 0, 1), 'f');
         epsOut = backpropDropOutIfPresent(epsOut);
 
         return new Pair<>(g, epsOut);

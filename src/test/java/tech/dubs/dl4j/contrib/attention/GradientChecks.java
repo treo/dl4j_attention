@@ -18,6 +18,7 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.learning.config.NoOp;
 import org.nd4j.linalg.lossfunctions.LossFunctions;
+import org.nd4j.linalg.profiler.OpProfiler;
 import tech.dubs.dl4j.contrib.attention.conf.RecurrentAttentionLayer;
 import tech.dubs.dl4j.contrib.attention.conf.SelfAttentionLayer;
 import tech.dubs.dl4j.contrib.attention.conf.TimestepAttentionLayer;
@@ -62,21 +63,27 @@ public class GradientChecks {
 
     @Test
     public void repl(){
-        final int examples = 2;
-        final int width = 3;
-        final int timesteps = 4;
-        final int nOut = 5;
+        final INDArray data = Nd4j.create(new int[]{3, 8, 5}, 'f');
+        data.assign(Nd4j.linspace(1, 3*8*5, 3*8*5));
 
-        final INDArray output = Nd4j.zeros(examples, nOut, timesteps);
-        final INDArray input = Nd4j.linspace(1, examples * width * timesteps, examples * width * timesteps).reshape(examples, width, timesteps);
+        final INDArray exampleView = data.get(point(0), all(), all());
+        System.out.println("exampleView: " + exampleView.shapeInfoToString());
 
-        final INDArray W = Nd4j.ones(width, nOut);
-        final INDArray b = Nd4j.ones(1, nOut);
+        final INDArray tsView = data.get(all(), all(), point(0));
+        System.out.println("tsView: " + tsView.shapeInfoToString());
 
-        output.assign(input.permute(0,2,1).reshape(examples * timesteps, width).mmul(W).addiRowVector(b).reshape(examples, timesteps, nOut).permute(0,2,1));
-        System.out.println(output);
+        final INDArray permuted = data.permute(1, 0, 2).dup('f');
+        System.out.println("permuted: " + permuted.shapeInfoToString());
 
-        System.out.println(output.tensorAlongDimension(0, 0, 1));
+        final INDArray permutedTsView = permuted.get(all(), all(), point(0));
+        System.out.println("permutedTsView: " + permutedTsView.shapeInfoToString());
+
+        final INDArray permutedExView = permuted.get(all(), point(0), all());
+        System.out.println("permutedExView: " + permutedExView.shapeInfoToString());
+
+        final INDArray permutedExTsView = permuted.get(point(0),all(), point(0));
+        System.out.println("permutedExTsView: " + permutedExTsView.shapeInfoToString());
+
     }
 
     @Test
@@ -137,6 +144,8 @@ public class GradientChecks {
                 assertTrue(name, gradOK);
             }
         }
+
+        OpProfiler.getInstance().printOutDashboard();
     }
 
     @Test

@@ -32,6 +32,9 @@ import java.util.*;
 import static org.nd4j.linalg.indexing.NDArrayIndex.interval;
 import static org.nd4j.linalg.indexing.NDArrayIndex.point;
 
+/**
+ * @author Paul Dubs
+ */
 public class QueryAttentionParamInitializer implements ParamInitializer {
 
     private static final QueryAttentionParamInitializer INSTANCE = new QueryAttentionParamInitializer();

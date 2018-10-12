@@ -26,8 +26,6 @@ import tech.dubs.dl4j.contrib.attention.conf.TimestepAttentionLayer;
 import java.util.Random;
 
 import static org.junit.Assert.assertTrue;
-import static org.nd4j.linalg.indexing.NDArrayIndex.all;
-import static org.nd4j.linalg.indexing.NDArrayIndex.point;
 
 public class GradientChecks {
     private static final boolean PRINT_RESULTS = false;
@@ -38,52 +36,6 @@ public class GradientChecks {
 
     static {
         Nd4j.setDataType(DataBuffer.Type.DOUBLE);
-    }
-
-    @Test
-    public void getViewAssign(){
-        final INDArray reshape = Nd4j.linspace(1, 6, 6).reshape('c', 3, 2);
-
-        final INDArray target = Nd4j.zeros(2, 6, 2);
-        final INDArray targetView = target.get(point(1), all(), point(0));
-        final INDArray targetView2 = target.tensorAlongDimension(0, 1);
-
-
-        System.out.println(reshape);
-        System.out.println(reshape.reshape(3*2, 1));
-        targetView.assign(reshape.reshape(3*2, 1));
-        System.out.println(targetView);
-        targetView2.assign(reshape.reshape(3*2, 1));
-        System.out.println(targetView2);
-
-        System.out.println(target);
-
-    }
-
-
-    @Test
-    public void repl(){
-        final INDArray data = Nd4j.create(new int[]{3, 8, 5}, 'f');
-        data.assign(Nd4j.linspace(1, 3*8*5, 3*8*5));
-
-        final INDArray exampleView = data.get(point(0), all(), all());
-        System.out.println("exampleView: " + exampleView.shapeInfoToString());
-
-        final INDArray tsView = data.get(all(), all(), point(0));
-        System.out.println("tsView: " + tsView.shapeInfoToString());
-
-        final INDArray permuted = data.permute(1, 0, 2).dup('f');
-        System.out.println("permuted: " + permuted.shapeInfoToString());
-
-        final INDArray permutedTsView = permuted.get(all(), all(), point(0));
-        System.out.println("permutedTsView: " + permutedTsView.shapeInfoToString());
-
-        final INDArray permutedExView = permuted.get(all(), point(0), all());
-        System.out.println("permutedExView: " + permutedExView.shapeInfoToString());
-
-        final INDArray permutedExTsView = permuted.get(point(0),all(), point(0));
-        System.out.println("permutedExTsView: " + permutedExTsView.shapeInfoToString());
-
     }
 
     @Test
@@ -266,19 +218,6 @@ public class GradientChecks {
                         //Sets.newHashSet(  /*"1_b", "1_W",* "1_WR", "1_WQR", "1_WQ", "1_bQ",*/ "2_b", "2_W" ,"0_W", "0_RW", "0_b"/**/)
                 );
                 assertTrue(name, gradOK);
-
-                /*System.out.println("in: " + in.shapeInfoToString());
-                System.out.println("Einzeln");
-                final long l = in.tensorssAlongDimension(1,2);
-                for (int i = 0; i < l; i++) {
-                    gradOK = GradientCheckUtil.checkGradients(net, DEFAULT_EPS, DEFAULT_MAX_REL_ERROR,
-                            DEFAULT_MIN_ABS_ERROR, PRINT_RESULTS, RETURN_ON_FIRST_FAILURE, in.tensorAlongDimension(i, 1, 2).reshape(1, nIn, tsLength), labels.tensorAlongDimension(i, 1).reshape(1, nOut), inMask, null, false, -1,
-                            Sets.newHashSet(  "1_b", *//*"1_W",*//* "1_WR", "1_WQR", "1_WQ", "1_bQ", "3_b", "3_W", "0_W", "0_RW", "0_b"));
-                    assertTrue(name, gradOK);
-                }
-
-
-                assertTrue(name, gradOK);*/
             }
         }
     }

@@ -18,7 +18,8 @@ import static org.nd4j.linalg.indexing.NDArrayIndex.all;
 import static org.nd4j.linalg.indexing.NDArrayIndex.point;
 
 /*
-  Attention: Shapes for keys, values and queries should be in [features, timesteps, examples] order!
+ *  Attention: Shapes for keys, values and queries should be in [features, timesteps, examples] order!
+ * @author Paul Dubs
  */
 public class AttentionMechanism {
     private final INDArray W;

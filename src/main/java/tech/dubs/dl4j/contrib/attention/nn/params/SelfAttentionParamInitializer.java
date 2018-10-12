@@ -31,6 +31,9 @@ import java.util.*;
 import static org.nd4j.linalg.indexing.NDArrayIndex.interval;
 import static org.nd4j.linalg.indexing.NDArrayIndex.point;
 
+/**
+ * @author Paul Dubs
+ */
 public class SelfAttentionParamInitializer implements ParamInitializer {
 
     private static final SelfAttentionParamInitializer INSTANCE = new SelfAttentionParamInitializer();

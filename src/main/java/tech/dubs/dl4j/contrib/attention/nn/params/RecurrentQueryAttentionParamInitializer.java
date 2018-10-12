@@ -32,8 +32,11 @@ import java.util.*;
 import static org.nd4j.linalg.indexing.NDArrayIndex.interval;
 import static org.nd4j.linalg.indexing.NDArrayIndex.point;
 
-/*
+/**
+ *
  * TODO: Allow configuring different weight init distribution for every weight and bias type
+ *
+ * @author Paul Dubs
  */
 public class RecurrentQueryAttentionParamInitializer implements ParamInitializer {
 

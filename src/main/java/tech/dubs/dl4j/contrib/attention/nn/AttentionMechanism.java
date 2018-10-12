@@ -3,6 +3,10 @@ package tech.dubs.dl4j.contrib.attention.nn;
 import org.deeplearning4j.nn.workspace.ArrayType;
 import org.deeplearning4j.nn.workspace.LayerWorkspaceMgr;
 import org.nd4j.linalg.activations.IActivation;
+import org.nd4j.linalg.api.memory.MemoryWorkspace;
+import org.nd4j.linalg.api.memory.conf.WorkspaceConfiguration;
+import org.nd4j.linalg.api.memory.enums.AllocationPolicy;
+import org.nd4j.linalg.api.memory.enums.LearningPolicy;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.api.shape.Shape;
 import org.nd4j.linalg.factory.Nd4j;
@@ -48,28 +52,37 @@ public class AttentionMechanism {
 
         final INDArray result = mgr.createUninitialized(ArrayType.FF_WORKING_MEM, new long[]{examples, memoryWidth * attentionHeads, queryCount}, 'f');
 
+        WorkspaceConfiguration initialConfig = WorkspaceConfiguration.builder()
+                .policyAllocation(AllocationPolicy.STRICT)
+                .policyLearning(LearningPolicy.FIRST_LOOP)
+                .build();
+
         for (long example = 0; example < examples; example++) {
-            final INDArray curValues = subArray(values, example);
-            final INDArray curKeys = subArray(keys, example);
+            try(MemoryWorkspace ws = Nd4j.getWorkspaceManager().getAndActivateWorkspace(initialConfig,"ATTENTION")){
+                final INDArray curValues = subArray(values, example);
+                final INDArray curKeys = subArray(keys, example);
 
-            final INDArray preResult = Nd4j.gemm(W, curKeys, true, false);
-            preResult.addiColumnVector(b.transpose());
+                final INDArray preResult = Nd4j.gemm(W, curKeys, true, false);
+                preResult.addiColumnVector(b.transpose());
 
-            final INDArray curMask = subMask(mask, example);
-            final INDArray attentionHeadMask = attentionHeadMask(curMask, preResult.shape());
+                final INDArray curMask = subMask(mask, example);
+                final INDArray attentionHeadMask = attentionHeadMask(curMask, preResult.shape());
 
-            for (long queryIdx = 0; queryIdx < queryCount; queryIdx++) {
-                final INDArray query = subArray(queries, example, queryIdx);
-                final INDArray curResult = subArray(result, example, queryIdx);
+                for (long queryIdx = 0; queryIdx < queryCount; queryIdx++) {
+                    try(MemoryWorkspace innerWs = Nd4j.getWorkspaceManager().getAndActivateWorkspace(initialConfig,"ATTENTION_QUERY")) {
+                        final INDArray query = subArray(queries, example, queryIdx);
+                        final INDArray curResult = subArray(result, example, queryIdx);
 
-                final INDArray queryResult = Nd4j.gemm(Q, query, true, true);
+                        final INDArray queryResult = Nd4j.gemm(Q, query, true, true);
 
-                final INDArray preA = preResult.addColumnVector(queryResult);
-                final INDArray preS = this.activation.getActivation(preA, training);
-                final INDArray attW = softmax.getActivation(preS, attentionHeadMask);
+                        final INDArray preA = preResult.addColumnVector(queryResult);
+                        final INDArray preS = this.activation.getActivation(preA, training);
+                        final INDArray attW = softmax.getActivation(preS, attentionHeadMask);
 
-                final INDArray att = Nd4j.gemm(curValues, attW, false, true);
-                curResult.assign(att.reshape('f', 1, memoryWidth * attentionHeads));
+                        final INDArray att = Nd4j.gemm(curValues, attW, false, true);
+                        curResult.assign(att.reshape('f', 1, memoryWidth * attentionHeads));
+                    }
+                }
             }
         }
 
@@ -108,44 +121,54 @@ public class AttentionMechanism {
                 + "; result shape = ["+examples+", "+attentionHeads*memoryWidth+", "+queryCount+"]");
         }
 
+        WorkspaceConfiguration initialConfig = WorkspaceConfiguration.builder()
+                .policyAllocation(AllocationPolicy.STRICT)
+                .policyLearning(LearningPolicy.FIRST_LOOP)
+                .build();
+
         final INDArray dldAtt = epsilon.reshape('c', examples, attentionHeads, memoryWidth, queryCount);
 
 
         for (long example = 0; example < examples; example++) {
-            final INDArray curValues = subArray(values, example);
-            final INDArray curKeys = subArray(keys, example);
+            try (MemoryWorkspace ws = Nd4j.getWorkspaceManager().getAndActivateWorkspace(initialConfig, "ATTENTION")) {
 
-            final INDArray exEps = dldAtt.tensorAlongDimension((int) example, 1,2,3);
+                final INDArray curValues = subArray(values, example);
+                final INDArray curKeys = subArray(keys, example);
 
-            final INDArray preResult = Nd4j.gemm(W, curKeys, true, false);
-            preResult.addiColumnVector(b.transpose());
+                final INDArray exEps = dldAtt.tensorAlongDimension((int) example, 1, 2, 3);
 
-            final INDArray curMask = subMask(mask, example);
-            final INDArray attentionHeadMask = attentionHeadMask(curMask, preResult.shape());
+                final INDArray preResult = Nd4j.gemm(W, curKeys, true, false);
+                preResult.addiColumnVector(b.transpose());
 
-            for (long queryIdx = 0; queryIdx < queryCount; queryIdx++) {
-                final INDArray curEps = exEps.tensorAlongDimension((int) queryIdx, 0,1);
-                final INDArray query = subArray(queries, example, queryIdx);
+                final INDArray curMask = subMask(mask, example);
+                final INDArray attentionHeadMask = attentionHeadMask(curMask, preResult.shape());
 
-                final INDArray queryResult = Nd4j.gemm(Q, query, true, true);
+                for (long queryIdx = 0; queryIdx < queryCount; queryIdx++) {
+                    try(MemoryWorkspace innerWs = Nd4j.getWorkspaceManager().getAndActivateWorkspace(initialConfig,"ATTENTION")) {
+                        final INDArray curEps = exEps.tensorAlongDimension((int) queryIdx, 0, 1);
+                        final INDArray query = subArray(queries, example, queryIdx);
 
-                final INDArray preA = preResult.addColumnVector(queryResult);
-                final INDArray preS = this.activation.getActivation(preA.dup(), training);
-                final INDArray attW = softmax.getActivation(preS.dup(), attentionHeadMask);
+                        final INDArray queryResult = Nd4j.gemm(Q, query, true, true);
 
-                subArray(valueG, example).addi(Nd4j.gemm(curEps, attW, true, false));
+                        final INDArray preA = preResult.addColumnVector(queryResult);
+                        final INDArray preS = this.activation.getActivation(preA.dup(), training);
+                        final INDArray attW = softmax.getActivation(preS.dup(), attentionHeadMask);
 
-                final INDArray dldAttW = Nd4j.gemm(curEps, curValues, false, false);
-                final INDArray dldPreS = softmax.backprop(preS, attentionHeadMask, dldAttW).getFirst();
-                final INDArray dldPreA = activation.backprop(preA, dldPreS).getFirst();
+                        subArray(valueG, example).addi(Nd4j.gemm(curEps, attW, true, false));
 
-                Qg.addi(Nd4j.gemm(dldPreA.sum(1), query, false, false).transposei());
-                Wg.addi(Nd4j.gemm(curKeys, dldPreA, false, true));
+                        final INDArray dldAttW = Nd4j.gemm(curEps, curValues, false, false);
+                        final INDArray dldPreS = softmax.backprop(preS, attentionHeadMask, dldAttW).getFirst();
+                        final INDArray dldPreA = activation.backprop(preA, dldPreS).getFirst();
 
-                bg.addi(dldPreA.sum(1).transpose());
+                        Qg.addi(Nd4j.gemm(dldPreA.sum(1), query, false, false).transposei());
+                        Wg.addi(Nd4j.gemm(curKeys, dldPreA, false, true));
 
-                subArray(keyG, example).addi(Nd4j.gemm(W, dldPreA, false, false));
-                subArray(queryG, example, queryIdx).addi(Nd4j.gemm(Q, dldPreA, false, false).sum(1).transpose());
+                        bg.addi(dldPreA.sum(1).transpose());
+
+                        subArray(keyG, example).addi(Nd4j.gemm(W, dldPreA, false, false));
+                        subArray(queryG, example, queryIdx).addi(Nd4j.gemm(Q, dldPreA, false, false).sum(1).transpose());
+                    }
+                }
             }
         }
     }

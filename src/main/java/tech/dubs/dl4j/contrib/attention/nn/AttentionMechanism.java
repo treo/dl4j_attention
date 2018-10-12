@@ -162,7 +162,7 @@ public class AttentionMechanism {
                         valueG.get(all(), all(), point(example)).addi(Nd4j.gemm(curEps, attW, true, false));
 
                         final INDArray dldAttW = Nd4j.gemm(curEps, curValues, false, false);
-                        final INDArray dldPreS = softmax.backprop(preS, attentionHeadMask, dldAttW).getFirst();
+                        final INDArray dldPreS = softmax.backprop(attW, attentionHeadMask, dldAttW).getFirst();
                         final INDArray dldPreA = activation.backprop(preA, dldPreS).getFirst();
 
                         Qg.addi(Nd4j.gemm(query, dldPreA.sum(1), false, true));

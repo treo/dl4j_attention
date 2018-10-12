@@ -17,6 +17,8 @@
 package tech.dubs.dl4j.contrib.attention.activations;
 
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.api.ops.impl.transforms.OldSoftMax;
+import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.ops.transforms.Transforms;
 import org.nd4j.linalg.primitives.Pair;
 
@@ -31,28 +33,25 @@ import java.util.Arrays;
 public class ActivationMaskedSoftmax {
 
     public INDArray getActivation(INDArray in, INDArray mask) {
-        assertShape(in, mask, null);
+        if(mask == null){
+            return Nd4j.getExecutioner().execAndReturn(new OldSoftMax(in));
+        }else {
+            assertShape(in, mask, null);
 
-        final INDArray shift = in.max(-1);
-        final INDArray exp = Transforms.exp(in.subiColumnVector(shift), false);
+            final INDArray shift = in.max(-1);
+            final INDArray exp = Transforms.exp(in.subiColumnVector(shift), false);
 
-        final INDArray masked;
-        if (mask != null) {
-            masked = exp.muli(mask);
-        } else {
-            masked = exp;
+            final INDArray masked = exp.muli(mask);
+
+            final INDArray sum = masked.sum(-1);
+            masked.diviColumnVector(sum);
+            return masked;
         }
-
-        final INDArray sum = masked.sum(-1);
-        masked.diviColumnVector(sum);
-        return masked;
     }
 
-    public Pair<INDArray, INDArray> backprop(INDArray in, INDArray mask, INDArray epsilon) {
-        assertShape(in, mask, epsilon);
-        INDArray out = getActivation(in, mask);
-        INDArray x = out.mul(epsilon).sum(1);
-        INDArray dLdz = out.mul(epsilon.subColumnVector(x));
+    public Pair<INDArray, INDArray> backprop(INDArray postSoftmax, INDArray mask, INDArray epsilon) {
+        INDArray x = postSoftmax.mul(epsilon).sum(1);
+        INDArray dLdz = postSoftmax.mul(epsilon.subColumnVector(x));
         return new Pair<>(dLdz, null);
     }
 

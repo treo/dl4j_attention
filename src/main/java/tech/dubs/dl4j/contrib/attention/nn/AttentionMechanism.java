@@ -157,7 +157,7 @@ public class AttentionMechanism {
 
                         final INDArray preA = preResult.addColumnVector(queryResult);
                         final INDArray preS = this.activation.getActivation(preA.dup(), training);
-                        final INDArray attW = softmax.getActivation(preS.dup(), attentionHeadMask);
+                        final INDArray attW = softmax.getActivation(preS, attentionHeadMask);
 
                         valueG.get(all(), all(), point(example)).addi(Nd4j.gemm(curEps, attW, true, false));
 

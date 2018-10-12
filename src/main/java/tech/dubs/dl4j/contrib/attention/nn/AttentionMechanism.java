@@ -165,8 +165,8 @@ public class AttentionMechanism {
                         final INDArray dldPreS = softmax.backprop(attW, attentionHeadMask, dldAttW).getFirst();
                         final INDArray dldPreA = activation.backprop(preA, dldPreS).getFirst();
 
-                        Qg.addi(Nd4j.gemm(query, dldPreA.sum(1), false, true));
-                        Wg.addi(Nd4j.gemm(curKeys, dldPreA, false, true));
+                        Nd4j.gemm(query, dldPreA.sum(1), Qg, false, true, 1.0, 1.0);
+                        Nd4j.gemm(curKeys, dldPreA, Wg, false, true, 1.0, 1.0);
 
                         bg.addi(dldPreA.sum(1).transpose());
 

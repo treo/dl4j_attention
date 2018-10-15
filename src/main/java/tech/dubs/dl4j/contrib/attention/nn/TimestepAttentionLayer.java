@@ -60,7 +60,7 @@ public class TimestepAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.att
         if(input.shape()[0] != nIn)
             input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input.permute(1, 2, 0), 'f');
 
-        final AttentionMechanism attentionMechanism = new AttentionMechanism(Q, W, b, a, workspaceMgr, training);
+        final AdditiveAttentionMechanism attentionMechanism = new AdditiveAttentionMechanism(Q, W, b, a, workspaceMgr, training);
         final INDArray attention = attentionMechanism.query(input, input, input, maskArray);
         activations.assign(attention);
 
@@ -94,7 +94,7 @@ public class TimestepAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.att
 
         INDArray epsOut = workspaceMgr.create(ArrayType.ACTIVATION_GRAD, input.shape(), 'f');
 
-        final AttentionMechanism attentionMechanism = new AttentionMechanism(Q, W, b, a, workspaceMgr, true);
+        final AdditiveAttentionMechanism attentionMechanism = new AdditiveAttentionMechanism(Q, W, b, a, workspaceMgr, true);
         attentionMechanism
                 .withGradientViews(Wg, Qg, bg, epsOut, epsOut, epsOut)
                 .backprop(epsilon, input, input, input, maskArray);

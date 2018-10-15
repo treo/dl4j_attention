@@ -63,7 +63,7 @@ public class SelfAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.attenti
 
         final INDArray queries = q.reshape(nIn, 1, 1).broadcast(nIn, 1, examples);
 
-        final AttentionMechanism attentionMechanism = new AttentionMechanism(Q, W, b, a, workspaceMgr, training);
+        final AdditiveAttentionMechanism attentionMechanism = new AdditiveAttentionMechanism(Q, W, b, a, workspaceMgr, training);
         final INDArray attention = attentionMechanism.query(queries, input, input, maskArray);
         activations.assign(attention.reshape(activations.shape()));
 
@@ -98,7 +98,7 @@ public class SelfAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.attenti
 
         INDArray epsOut = workspaceMgr.create(ArrayType.ACTIVATION_GRAD, input.shape(), 'f');
 
-        final AttentionMechanism attentionMechanism = new AttentionMechanism(Q, W, b, a, workspaceMgr, true);
+        final AdditiveAttentionMechanism attentionMechanism = new AdditiveAttentionMechanism(Q, W, b, a, workspaceMgr, true);
 
         final INDArray queries = q.reshape(nIn, 1, 1).broadcast(nIn, 1, examples);
         final INDArray queryG = workspaceMgr.create(ArrayType.BP_WORKING_MEM, queries.shape(), 'f');

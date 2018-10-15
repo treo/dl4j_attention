@@ -21,7 +21,7 @@ import static org.nd4j.linalg.indexing.NDArrayIndex.point;
  *  Attention: Shapes for keys, values and queries should be in [features, timesteps, examples] order!
  * @author Paul Dubs
  */
-public class AttentionMechanism {
+public class AdditiveAttentionMechanism {
     private final INDArray W;
     private final INDArray Q;
     private final INDArray b;
@@ -40,7 +40,7 @@ public class AttentionMechanism {
     private INDArray valueG;
     private INDArray queryG;
 
-    public AttentionMechanism(INDArray queryWeight, INDArray keyWeight, INDArray bias, IActivation activation, LayerWorkspaceMgr mgr, boolean training) {
+    public AdditiveAttentionMechanism(INDArray queryWeight, INDArray keyWeight, INDArray bias, IActivation activation, LayerWorkspaceMgr mgr, boolean training) {
         assertWeightShapes(queryWeight, keyWeight, bias);
         Q = queryWeight;
         W = keyWeight;
@@ -53,7 +53,7 @@ public class AttentionMechanism {
         this.caching = false;
     }
 
-    public AttentionMechanism useCaching() {
+    public AdditiveAttentionMechanism useCaching() {
         this.caching = true;
         return this;
     }
@@ -121,7 +121,7 @@ public class AttentionMechanism {
         return result;
     }
 
-    public AttentionMechanism withGradientViews(INDArray W, INDArray Q, INDArray b, INDArray keys, INDArray values, INDArray queries) {
+    public AdditiveAttentionMechanism withGradientViews(INDArray W, INDArray Q, INDArray b, INDArray keys, INDArray values, INDArray queries) {
         Wg = W;
         Qg = Q;
         bg = b;

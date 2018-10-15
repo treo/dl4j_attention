@@ -67,7 +67,7 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
         if(input.shape()[0] != nIn)
             input = workspaceMgr.dup(ArrayType.ACTIVATIONS, input.permute(1, 2, 0), 'f');
 
-        final AttentionMechanism attentionMechanism = new AttentionMechanism(Wqr, Wq, bq, a, workspaceMgr, training).useCaching();
+        final AdditiveAttentionMechanism attentionMechanism = new AdditiveAttentionMechanism(Wqr, Wq, bq, a, workspaceMgr, training).useCaching();
 
 
         // pre-compute non-recurrent part
@@ -142,7 +142,7 @@ public class RecurrentAttentionLayer extends BaseLayer<tech.dubs.dl4j.contrib.at
         epsOut.assign(0);
 
 
-        final AttentionMechanism attentionMechanism = new AttentionMechanism(Wqr, Wq, bq, a, workspaceMgr, true).useCaching();
+        final AdditiveAttentionMechanism attentionMechanism = new AdditiveAttentionMechanism(Wqr, Wq, bq, a, workspaceMgr, true).useCaching();
 
         // pre-compute non-recurrent part
         activations.assign(
